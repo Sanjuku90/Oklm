@@ -1,6 +1,6 @@
-const CACHE_NAME = 'ttrust-v1.1.0';
-const STATIC_CACHE = 'ttrust-static-v1.1.0';
-const DYNAMIC_CACHE = 'ttrust-dynamic-v1.1.0';
+const CACHE_NAME = 'winwin-v1.1.0';
+const STATIC_CACHE = 'winwin-static-v1.1.0';
+const DYNAMIC_CACHE = 'winwin-dynamic-v1.1.0';
 
 // Ressources à mettre en cache immédiatement
 const STATIC_CACHE_URLS = [
@@ -237,7 +237,7 @@ self.addEventListener('push', event => {
 
   const data = event.data.json();
   const options = {
-    body: data.body || 'Nouvelle notification Ttrust',
+    body: data.body || 'Nouvelle notification Win Win',
     icon: '/static/icons/icon-192x192.png',
     badge: '/static/icons/badge-72x72.png',
     vibrate: [200, 100, 200],
@@ -259,7 +259,7 @@ self.addEventListener('push', event => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Ttrust', options)
+    self.registration.showNotification(data.title || 'Win Win', options)
   );
 });
 
