@@ -681,7 +681,7 @@ def restore_critical_data():
         ('Quand puis-je retirer mes gains ?', 'Vos gains quotidiens sont disponibles immédiatement pour retrait. Le capital initial est libéré à la fin du plan.', 'investment'),
         ('Les investissements sont-ils sécurisés ?', 'Oui, nous utilisons des smart contracts et un système de sécurité multicouche pour protéger vos investissements.', 'security'),
         ('Comment fonctionne le parrainage ?', 'Partagez votre code de parrainage unique et recevez 5% sur tous les investissements de vos filleuls.', 'referral'),
-        ('Quel est le montant minimum d investissement ?', 'Le montant minimum est de 20 USDT pour tous nos plans d investissement.', 'investment')
+        ('Quel est le montant minimum d investissement ?', 'Le montant minimum est de 100 USDT pour tous nos plans d investissement.', 'investment')
     ''')
 
     
@@ -708,11 +708,11 @@ def restore_critical_data():
         cursor.execute('''
             INSERT INTO roi_plans (name, description, daily_rate, duration_days, min_amount, max_amount)
         VALUES 
-        ('Rocket Launch', '🚀 Plan meteore ultra-rentable ! 35% quotidien pendant 3 jours.', 0.35, 3, 20, 2000),
-        ('Mega Booster', '💥 Plan mega booster ! 30% quotidien pendant 5 jours.', 0.30, 5, 20, 3000),
-        ('Super Express', '⚡ Plan super express ! 25% quotidien pendant 7 jours.', 0.25, 7, 20, 4000),
-        ('Lightning Pro', '⚡ Plan lightning pro ! 22% quotidien pendant 10 jours.', 0.22, 10, 20, 5000),
-        ('Turbo Flash', '🔥 Plan turbo flash ! 20% quotidien pendant 14 jours.', 0.20, 14, 20, 8000)
+        ('Rocket Launch', '🚀 Plan meteore ultra-rentable ! 35% quotidien pendant 3 jours.', 0.35, 3, 100, 2000),
+        ('Mega Booster', '💥 Plan mega booster ! 30% quotidien pendant 5 jours.', 0.30, 5, 100, 3000),
+        ('Super Express', '⚡ Plan super express ! 25% quotidien pendant 7 jours.', 0.25, 7, 100, 4000),
+        ('Lightning Pro', '⚡ Plan lightning pro ! 22% quotidien pendant 10 jours.', 0.22, 10, 100, 5000),
+        ('Turbo Flash', '🔥 Plan turbo flash ! 20% quotidien pendant 14 jours.', 0.20, 14, 100, 8000)
     ''')
 
     # Insert top 10 staking plans - Starting from 20 USDT (only if not exist)
@@ -722,16 +722,16 @@ def restore_critical_data():
         cursor.execute('''
             INSERT INTO staking_plans (name, description, duration_days, annual_rate, min_amount, max_amount, penalty_rate)
         VALUES 
-        ('Quick Stake', '⚡ Staking rapide 7 jours ! 8% annuel. Parfait pour tester le staking.', 7, 0.08, 20, 300, 0.02),
-        ('Flex Stake', '🔄 Staking flexible 15 jours ! 12% annuel. Idéal pour débutants.', 15, 0.12, 20, 500, 0.03),
-        ('Standard Stake', '📊 Staking standard 30 jours ! 18% annuel. Notre choix populaire.', 30, 0.18, 20, 1000, 0.04),
-        ('Power Stake', '💪 Staking puissant 45 jours ! 22% annuel. Excellent rendement.', 45, 0.22, 20, 2000, 0.05),
-        ('Premium Stake', '💎 Staking premium 60 jours ! 28% annuel. Pour investisseurs sérieux.', 60, 0.28, 20, 3000, 0.06),
-        ('Elite Stake', '🏆 Staking elite 90 jours ! 35% annuel. Performance exceptionnelle.', 90, 0.35, 20, 5000, 0.07),
-        ('Master Stake', '👑 Staking master 120 jours ! 42% annuel. Retour impressionnant.', 120, 0.42, 20, 8000, 0.08),
-        ('Royal Stake', '🎖️ Staking royal 150 jours ! 50% annuel. Rendement royal.', 150, 0.50, 20, 12000, 0.09),
-        ('Supreme Stake', '⭐ Staking suprême 180 jours ! 60% annuel. Le top du staking.', 180, 0.60, 20, 20000, 0.10),
-        ('Ultimate Stake', '🚀 Staking ultimate 365 jours ! 80% annuel. Performance ultime.', 365, 0.80, 20, 50000, 0.12)
+        ('Quick Stake', '⚡ Staking rapide 7 jours ! 8% annuel. Parfait pour tester le staking.', 7, 0.08, 100, 300, 0.02),
+        ('Flex Stake', '🔄 Staking flexible 15 jours ! 12% annuel. Idéal pour débutants.', 15, 0.12, 100, 500, 0.03),
+        ('Standard Stake', '📊 Staking standard 30 jours ! 18% annuel. Notre choix populaire.', 30, 0.18, 100, 1000, 0.04),
+        ('Power Stake', '💪 Staking puissant 45 jours ! 22% annuel. Excellent rendement.', 45, 0.22, 100, 2000, 0.05),
+        ('Premium Stake', '💎 Staking premium 60 jours ! 28% annuel. Pour investisseurs sérieux.', 60, 0.28, 100, 3000, 0.06),
+        ('Elite Stake', '🏆 Staking elite 90 jours ! 35% annuel. Performance exceptionnelle.', 90, 0.35, 100, 5000, 0.07),
+        ('Master Stake', '👑 Staking master 120 jours ! 42% annuel. Retour impressionnant.', 120, 0.42, 100, 8000, 0.08),
+        ('Royal Stake', '🎖️ Staking royal 150 jours ! 50% annuel. Rendement royal.', 150, 0.50, 100, 12000, 0.09),
+        ('Supreme Stake', '⭐ Staking suprême 180 jours ! 60% annuel. Le top du staking.', 180, 0.60, 100, 20000, 0.10),
+        ('Ultimate Stake', '🚀 Staking ultimate 365 jours ! 80% annuel. Performance ultime.', 365, 0.80, 100, 50000, 0.12)
     ''')
 
     # Insert top 10 frozen plans - Starting from 20 USDT (only if not exist)
@@ -741,16 +741,16 @@ def restore_critical_data():
         cursor.execute('''
             INSERT INTO frozen_plans (name, description, duration_days, total_return_rate, min_amount, max_amount)
         VALUES 
-        ('Ice Starter', '🧊 Plan gelé débutant ! 30 jours gelés pour 150% de retour total.', 30, 1.5, 20, 400),
-        ('Frost Basic', '❄️ Plan frost basique ! 60 jours gelés pour 180% de retour total.', 60, 1.8, 20, 600),
-        ('Freeze Standard', '🥶 Plan freeze standard ! 90 jours gelés pour 220% de retour total.', 90, 2.2, 20, 800),
-        ('Glacial Pro', '🏔️ Plan glacial pro ! 120 jours gelés pour 280% de retour total.', 120, 2.8, 20, 1200),
-        ('Arctic Elite', '🐧 Plan arctique elite ! 150 jours gelés pour 350% de retour total.', 150, 3.5, 20, 2000),
-        ('Polar Premium', '🐻‍❄️ Plan polaire premium ! 180 jours gelés pour 450% de retour total.', 180, 4.5, 20, 3000),
-        ('Blizzard VIP', '❄️ Plan blizzard VIP ! 240 jours gelés pour 600% de retour total.', 240, 6.0, 20, 5000),
-        ('Absolute Zero', '🌨️ Plan zéro absolu ! 300 jours gelés pour 800% de retour total.', 300, 8.0, 20, 8000),
-        ('Eternal Frost', '🧊 Plan gel éternel ! 360 jours gelés pour 1200% de retour total.', 360, 12.0, 20, 15000),
-        ('Cosmic Ice', '🌌 Plan glace cosmique ! 450 jours gelés pour 2000% de retour total.', 450, 20.0, 20, 50000)
+        ('Ice Starter', '🧊 Plan gelé débutant ! 30 jours gelés pour 150% de retour total.', 30, 1.5, 100, 400),
+        ('Frost Basic', '❄️ Plan frost basique ! 60 jours gelés pour 180% de retour total.', 60, 1.8, 100, 600),
+        ('Freeze Standard', '🥶 Plan freeze standard ! 90 jours gelés pour 220% de retour total.', 90, 2.2, 100, 800),
+        ('Glacial Pro', '🏔️ Plan glacial pro ! 120 jours gelés pour 280% de retour total.', 120, 2.8, 100, 1200),
+        ('Arctic Elite', '🐧 Plan arctique elite ! 150 jours gelés pour 350% de retour total.', 150, 3.5, 100, 2000),
+        ('Polar Premium', '🐻‍❄️ Plan polaire premium ! 180 jours gelés pour 450% de retour total.', 180, 4.5, 100, 3000),
+        ('Blizzard VIP', '❄️ Plan blizzard VIP ! 240 jours gelés pour 600% de retour total.', 240, 6.0, 100, 5000),
+        ('Absolute Zero', '🌨️ Plan zéro absolu ! 300 jours gelés pour 800% de retour total.', 300, 8.0, 100, 8000),
+        ('Eternal Frost', '🧊 Plan gel éternel ! 360 jours gelés pour 1200% de retour total.', 360, 12.0, 100, 15000),
+        ('Cosmic Ice', '🌌 Plan glace cosmique ! 450 jours gelés pour 2000% de retour total.', 450, 20.0, 100, 50000)
     ''')
 
     # Insert top 10 projects - Starting from 20 USDT (only if not exist)
@@ -760,16 +760,16 @@ def restore_critical_data():
         cursor.execute('''
             INSERT INTO projects (title, description, category, target_amount, expected_return, duration_months, min_investment, max_investment, deadline)
         VALUES 
-        ('Crypto Mining Farm', '⛏️ Ferme de minage crypto moderne ! 15% de retour en 6 mois.', 'Mining', 10000, 0.15, 6, 20, 1000, datetime("now", "+30 days")),
-        ('E-commerce Platform', '🛒 Plateforme e-commerce innovante ! 18% de retour en 8 mois.', 'Tech', 15000, 0.18, 8, 20, 1500, datetime("now", "+45 days")),
-        ('Green Energy Solar', '☀️ Énergie solaire verte ! 20% de retour en 12 mois.', 'Énergie', 25000, 0.20, 12, 20, 2500, datetime("now", "+60 days")),
-        ('FinTech Startup', '💳 Startup fintech prometteuse ! 22% de retour en 10 mois.', 'Finance', 20000, 0.22, 10, 20, 2000, datetime("now", "+40 days")),
-        ('Real Estate Fund', '🏠 Fonds immobilier diversifié ! 25% de retour en 18 mois.', 'Immobilier', 50000, 0.25, 18, 20, 5000, datetime("now", "+75 days")),
-        ('AI Tech Company', '🤖 Entreprise tech IA ! 28% de retour en 14 mois.', 'Intelligence Artificielle', 35000, 0.28, 14, 20, 3500, datetime("now", "+50 days")),
-        ('Renewable Energy', '🌱 Énergies renouvelables ! 30% de retour en 20 mois.', 'Écologie', 40000, 0.30, 20, 20, 4000, datetime("now", "+65 days")),
-        ('Biotech Innovation', '🧬 Innovation biotechnologique ! 35% de retour en 24 mois.', 'Biotechnologie', 60000, 0.35, 24, 20, 6000, datetime("now", "+80 days")),
-        ('Space Technology', '🚀 Technologie spatiale ! 40% de retour en 30 mois.', 'Espace', 80000, 0.40, 30, 20, 8000, datetime("now", "+90 days")),
-        ('Quantum Computing', '⚛️ Informatique quantique ! 50% de retour en 36 mois.', 'Quantique', 100000, 0.50, 36, 20, 10000, datetime("now", "+120 days"))
+        ('Crypto Mining Farm', '⛏️ Ferme de minage crypto moderne ! 15% de retour en 6 mois.', 'Mining', 10000, 0.15, 6, 100, 1000, datetime("now", "+30 days")),
+        ('E-commerce Platform', '🛒 Plateforme e-commerce innovante ! 18% de retour en 8 mois.', 'Tech', 15000, 0.18, 8, 100, 1500, datetime("now", "+45 days")),
+        ('Green Energy Solar', '☀️ Énergie solaire verte ! 20% de retour en 12 mois.', 'Énergie', 25000, 0.20, 12, 100, 2500, datetime("now", "+60 days")),
+        ('FinTech Startup', '💳 Startup fintech prometteuse ! 22% de retour en 10 mois.', 'Finance', 20000, 0.22, 10, 100, 2000, datetime("now", "+40 days")),
+        ('Real Estate Fund', '🏠 Fonds immobilier diversifié ! 25% de retour en 18 mois.', 'Immobilier', 50000, 0.25, 18, 100, 5000, datetime("now", "+75 days")),
+        ('AI Tech Company', '🤖 Entreprise tech IA ! 28% de retour en 14 mois.', 'Intelligence Artificielle', 35000, 0.28, 14, 100, 3500, datetime("now", "+50 days")),
+        ('Renewable Energy', '🌱 Énergies renouvelables ! 30% de retour en 20 mois.', 'Écologie', 40000, 0.30, 20, 100, 4000, datetime("now", "+65 days")),
+        ('Biotech Innovation', '🧬 Innovation biotechnologique ! 35% de retour en 24 mois.', 'Biotechnologie', 60000, 0.35, 24, 100, 6000, datetime("now", "+80 days")),
+        ('Space Technology', '🚀 Technologie spatiale ! 40% de retour en 30 mois.', 'Espace', 80000, 0.40, 30, 100, 8000, datetime("now", "+90 days")),
+        ('Quantum Computing', '⚛️ Informatique quantique ! 50% de retour en 36 mois.', 'Quantique', 100000, 0.50, 36, 100, 10000, datetime("now", "+120 days"))
     ''')
 
     # Insert trading strategies (only if not exist)
@@ -779,16 +779,16 @@ def restore_critical_data():
         cursor.execute('''
             INSERT INTO trading_strategies (name, description, risk_level, expected_daily_return, min_amount, max_amount, strategy_type, parameters)
         VALUES 
-        ('IA Conservateur', '🛡️ Stratégie IA sécurisée avec analyse de risque avancée. Idéale pour débuter le trading automatique.', 'Faible', 0.015, 20, 1000, 'ai_conservative', '{"stop_loss": 0.05, "take_profit": 0.03, "max_trades": 3}'),
-        ('IA Équilibré', '⚖️ Stratégie IA équilibrée combinant sécurité et performance. Parfait équilibre risque/rendement.', 'Moyen', 0.025, 20, 2000, 'ai_balanced', '{"stop_loss": 0.08, "take_profit": 0.05, "max_trades": 5}'),
-        ('IA Agressif', '🚀 Stratégie IA haute performance avec algorithmes avancés. Pour investisseurs expérimentés.', 'Élevé', 0.04, 20, 5000, 'ai_aggressive', '{"stop_loss": 0.12, "take_profit": 0.08, "max_trades": 8}'),
-        ('Scalping Bot', '⚡ Bot de scalping ultra-rapide avec IA prédictive. Trades haute fréquence pour profits constants.', 'Moyen', 0.035, 20, 3000, 'scalping_ai', '{"timeframe": "1m", "trades_per_hour": 10, "profit_target": 0.02}'),
-        ('Arbitrage IA', '🔄 Bot d arbitrage intelligent détectant les écarts de prix entre exchanges. Profits garantis.', 'Faible', 0.02, 20, 10000, 'arbitrage_ai', '{"min_spread": 0.01, "max_exposure": 0.3, "exchanges": 5}'),
-        ('Swing Trading Pro', '📈 IA de swing trading analysant les tendances moyennes. Positions 2-7 jours pour profits optimaux.', 'Moyen', 0.03, 20, 4000, 'swing_ai', '{"timeframe": "4h", "trend_strength": 0.7, "position_size": 0.2}'),
-        ('DeFi Yield Bot', '🌾 Bot DeFi intelligent optimisant les rendements sur protocols décentralisés. Farming automatisé.', 'Moyen', 0.045, 20, 8000, 'defi_yield', '{"protocols": ["uniswap", "compound"], "rebalance_frequency": "daily"}'),
-        ('Grid Trading IA', '🔳 Stratégie de trading en grille avec IA adaptative. Profits dans tous les marchés.', 'Faible', 0.018, 20, 6000, 'grid_ai', '{"grid_size": 20, "price_range": 0.1, "adaptive": true}'),
-        ('News Trading Bot', '📰 Bot réagissant aux news crypto en temps réel avec analyse sentiment IA. Profits sur volatilité.', 'Élevé', 0.038, 20, 2500, 'news_ai', '{"sentiment_threshold": 0.8, "reaction_time": "30s", "news_sources": 15}'),
-        ('Multi-Strategy IA', '🎯 Bot combinant plusieurs stratégies IA adaptatives. Performance optimisée automatiquement.', 'Moyen', 0.032, 20, 15000, 'multi_ai', '{"strategies": 5, "allocation_dynamic": true, "rebalance": "weekly"}')
+        ('IA Conservateur', '🛡️ Stratégie IA sécurisée avec analyse de risque avancée. Idéale pour débuter le trading automatique.', 'Faible', 0.015, 100, 1000, 'ai_conservative', '{"stop_loss": 0.05, "take_profit": 0.03, "max_trades": 3}'),
+        ('IA Équilibré', '⚖️ Stratégie IA équilibrée combinant sécurité et performance. Parfait équilibre risque/rendement.', 'Moyen', 0.025, 100, 2000, 'ai_balanced', '{"stop_loss": 0.08, "take_profit": 0.05, "max_trades": 5}'),
+        ('IA Agressif', '🚀 Stratégie IA haute performance avec algorithmes avancés. Pour investisseurs expérimentés.', 'Élevé', 0.04, 100, 5000, 'ai_aggressive', '{"stop_loss": 0.12, "take_profit": 0.08, "max_trades": 8}'),
+        ('Scalping Bot', '⚡ Bot de scalping ultra-rapide avec IA prédictive. Trades haute fréquence pour profits constants.', 'Moyen', 0.035, 100, 3000, 'scalping_ai', '{"timeframe": "1m", "trades_per_hour": 10, "profit_target": 0.02}'),
+        ('Arbitrage IA', '🔄 Bot d arbitrage intelligent détectant les écarts de prix entre exchanges. Profits garantis.', 'Faible', 0.02, 100, 10000, 'arbitrage_ai', '{"min_spread": 0.01, "max_exposure": 0.3, "exchanges": 5}'),
+        ('Swing Trading Pro', '📈 IA de swing trading analysant les tendances moyennes. Positions 2-7 jours pour profits optimaux.', 'Moyen', 0.03, 100, 4000, 'swing_ai', '{"timeframe": "4h", "trend_strength": 0.7, "position_size": 0.2}'),
+        ('DeFi Yield Bot', '🌾 Bot DeFi intelligent optimisant les rendements sur protocols décentralisés. Farming automatisé.', 'Moyen', 0.045, 100, 8000, 'defi_yield', '{"protocols": ["uniswap", "compound"], "rebalance_frequency": "daily"}'),
+        ('Grid Trading IA', '🔳 Stratégie de trading en grille avec IA adaptative. Profits dans tous les marchés.', 'Faible', 0.018, 100, 6000, 'grid_ai', '{"grid_size": 20, "price_range": 0.1, "adaptive": true}'),
+        ('News Trading Bot', '📰 Bot réagissant aux news crypto en temps réel avec analyse sentiment IA. Profits sur volatilité.', 'Élevé', 0.038, 100, 2500, 'news_ai', '{"sentiment_threshold": 0.8, "reaction_time": "30s", "news_sources": 15}'),
+        ('Multi-Strategy IA', '🎯 Bot combinant plusieurs stratégies IA adaptatives. Performance optimisée automatiquement.', 'Moyen', 0.032, 100, 15000, 'multi_ai', '{"strategies": 5, "allocation_dynamic": true, "rebalance": "weekly"}')
     ''')
 
     # Insert top traders for copy trading (only if not exist)
@@ -798,16 +798,16 @@ def restore_critical_data():
         cursor.execute('''
             INSERT INTO top_traders (name, avatar_url, total_return, win_rate, followers_count, monthly_return, risk_score, trading_style, min_copy_amount, max_copy_amount)
         VALUES 
-        ('CryptoKing_AI', '/static/avatars/trader1.png', 245.5, 78.5, 1250, 25.2, 6.2, 'Swing Trading + IA', 20, 5000),
-        ('QuantMaster_Pro', '/static/avatars/trader2.png', 189.3, 82.1, 980, 18.7, 4.8, 'Algorithmic Trading', 20, 3000),
-        ('ScalpBot_Elite', '/static/avatars/trader3.png', 156.8, 75.3, 1580, 22.4, 7.1, 'Scalping + Arbitrage', 20, 2500),
-        ('TrendHunter_IA', '/static/avatars/trader4.png', 198.7, 80.2, 920, 19.8, 5.5, 'Trend Following IA', 20, 4000),
-        ('DeFi_Wizard', '/static/avatars/trader5.png', 134.2, 88.9, 750, 15.8, 3.2, 'DeFi Yield Farming', 20, 8000),
-        ('Volatility_Pro', '/static/avatars/trader6.png', 178.5, 73.4, 1120, 21.3, 8.5, 'Volatility Trading', 20, 3500),
-        ('AI_GridMaster', '/static/avatars/trader7.png', 145.6, 85.7, 680, 16.9, 4.1, 'Grid + IA Adaptive', 20, 6000),
-        ('NewsBot_Elite', '/static/avatars/trader8.png', 167.3, 76.8, 1340, 20.1, 6.8, 'News-based Trading', 20, 2800),
-        ('Hodl_IA_Pro', '/static/avatars/trader9.png', 123.8, 91.2, 2100, 14.5, 2.9, 'Long-term IA', 20, 10000),
-        ('MultiStrat_Bot', '/static/avatars/trader10.png', 201.4, 79.6, 1450, 23.7, 5.9, 'Multi-Strategy IA', 20, 7500)
+        ('CryptoKing_AI', '/static/avatars/trader1.png', 245.5, 78.5, 1250, 25.2, 6.2, 'Swing Trading + IA', 100, 5000),
+        ('QuantMaster_Pro', '/static/avatars/trader2.png', 189.3, 82.1, 980, 18.7, 4.8, 'Algorithmic Trading', 100, 3000),
+        ('ScalpBot_Elite', '/static/avatars/trader3.png', 156.8, 75.3, 1580, 22.4, 7.1, 'Scalping + Arbitrage', 100, 2500),
+        ('TrendHunter_IA', '/static/avatars/trader4.png', 198.7, 80.2, 920, 19.8, 5.5, 'Trend Following IA', 100, 4000),
+        ('DeFi_Wizard', '/static/avatars/trader5.png', 134.2, 88.9, 750, 15.8, 3.2, 'DeFi Yield Farming', 100, 8000),
+        ('Volatility_Pro', '/static/avatars/trader6.png', 178.5, 73.4, 1120, 21.3, 8.5, 'Volatility Trading', 100, 3500),
+        ('AI_GridMaster', '/static/avatars/trader7.png', 145.6, 85.7, 680, 16.9, 4.1, 'Grid + IA Adaptive', 100, 6000),
+        ('NewsBot_Elite', '/static/avatars/trader8.png', 167.3, 76.8, 1340, 20.1, 6.8, 'News-based Trading', 100, 2800),
+        ('Hodl_IA_Pro', '/static/avatars/trader9.png', 123.8, 91.2, 2100, 14.5, 2.9, 'Long-term IA', 100, 10000),
+        ('MultiStrat_Bot', '/static/avatars/trader10.png', 201.4, 79.6, 1450, 23.7, 5.9, 'Multi-Strategy IA', 100, 7500)
     ''')
 
     conn.commit()
