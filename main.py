@@ -23,7 +23,7 @@ TELEGRAM_USER_BOT_ENABLED = False
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.secret_key = os.environ.get('SESSION_SECRET') or os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 
 # Configuration PWA
 @app.route('/sw.js')
