@@ -1,9 +1,9 @@
 entrypoint = "main.py"
-modules = ["web", "python-3.11", "nodejs-20", "postgresql-16"]
+modules = ["web", "python-3.11", "nodejs-20"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["openssl", "postgresql"]
+packages = ["freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "postgresql", "tcl", "tk", "zlib"]
 
 [unitTest]
 language = "python3"
@@ -54,3 +54,9 @@ externalPort = 80
 
 [agent]
 expertMode = true
+stack = "FLASK_VANILLA_JS"
+
+[userenv]
+
+[userenv.shared]
+SECRET_KEY = "3bef36deb547bdc2ece46b9cfef66db4b44d692069a42dbc90f03397268397f6"

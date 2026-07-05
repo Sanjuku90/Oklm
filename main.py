@@ -23,12 +23,13 @@ TELEGRAM_USER_BOT_ENABLED = False
 
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # Configuration PWA
-@app.route('/static/sw.js')
+@app.route('/sw.js')
 def service_worker():
-    return app.send_static_file('sw.js'), 200, {'Content-Type': 'application/javascript'}
+    response = app.send_static_file('sw.js')
+    return response, 200, {'Content-Type': 'application/javascript', 'Service-Worker-Allowed': '/'}
 
 @app.route('/static/manifest.json')
 def manifest():

@@ -2257,7 +2257,7 @@
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
                 try {
-                    swRegistration = await navigator.serviceWorker.register('/static/sw.js', {
+                    swRegistration = await navigator.serviceWorker.register('/sw.js', {
                         scope: '/',
                         updateViaCache: 'none'
                     });
