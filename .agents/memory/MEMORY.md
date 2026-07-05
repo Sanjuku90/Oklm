@@ -1,0 +1,2 @@
+- [Turso/libSQL migration from raw sqlite3](turso-sqlite-migration.md) — remote libSQL is a drop-in for sqlite3-based apps via a connection-layer wrapper; watch row access, pragmas, exceptions, quoting.
+- [Orphaned dead code from bad merges](orphaned-dead-code-detection.md) — a pre-seeded local DB file can mask years-old dead code that never actually creates its tables; verify on fresh DB.

@@ -14,9 +14,146 @@ import urllib.request
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 
-# Utilisation de SQLite pour la persistance
+try:
+    import libsql_experimental as libsql
+except ImportError:
+    libsql = None
+
+TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL')
+TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
+USE_TURSO = bool(libsql and TURSO_DATABASE_URL and TURSO_AUTH_TOKEN)
+
+# Pragmas qui ne sont pas autorisés sur une connexion distante Turso/Hrana
+# (elles n'ont de sens que pour un fichier SQLite local)
+_UNSUPPORTED_REMOTE_PRAGMAS = ('JOURNAL_MODE', 'BUSY_TIMEOUT', 'SYNCHRONOUS', 'CACHE_SIZE', 'TEMP_STORE')
+
+
+class TursoRow:
+    """Objet ligne compatible avec sqlite3.Row: accès par index ou par nom de colonne."""
+    __slots__ = ('_columns', '_values')
+
+    def __init__(self, columns, values):
+        self._columns = columns
+        self._values = values
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            try:
+                idx = self._columns.index(key)
+            except ValueError:
+                raise KeyError(key)
+            return self._values[idx]
+        return self._values[key]
+
+    def keys(self):
+        return list(self._columns)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except (KeyError, IndexError):
+            return default
+
+    def __contains__(self, key):
+        return key in self._columns
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+    def __repr__(self):
+        return f"<TursoRow {dict(zip(self._columns, self._values))}>"
+
+
+class TursoCursor:
+    """Enveloppe un curseur libsql pour se comporter comme un curseur sqlite3."""
+
+    def __init__(self, raw_cursor):
+        self._cursor = raw_cursor
+
+    def execute(self, sql, params=None):
+        stripped = sql.strip().upper()
+        if stripped.startswith('PRAGMA') and any(p in stripped for p in _UNSUPPORTED_REMOTE_PRAGMAS):
+            return self
+        try:
+            if params is not None:
+                self._cursor.execute(sql, params)
+            else:
+                self._cursor.execute(sql)
+        except ValueError as e:
+            raise sqlite3.OperationalError(str(e)) from e
+        return self
+
+    def _wrap_row(self, row):
+        if row is None:
+            return None
+        columns = tuple(d[0] for d in (self._cursor.description or ()))
+        return TursoRow(columns, tuple(row))
+
+    def fetchone(self):
+        return self._wrap_row(self._cursor.fetchone())
+
+    def fetchall(self):
+        return [self._wrap_row(r) for r in self._cursor.fetchall()]
+
+    def fetchmany(self, size=None):
+        rows = self._cursor.fetchmany(size) if size is not None else self._cursor.fetchmany()
+        return [self._wrap_row(r) for r in rows]
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+    @property
+    def description(self):
+        return self._cursor.description
+
+    @property
+    def rowcount(self):
+        return getattr(self._cursor, 'rowcount', -1)
+
+
+class TursoConnection:
+    """Enveloppe une connexion libsql pour se comporter comme une connexion sqlite3."""
+
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+        self.row_factory = None
+
+    def execute(self, sql, params=None):
+        cursor = TursoCursor(self._conn.cursor())
+        return cursor.execute(sql, params)
+
+    def cursor(self):
+        return TursoCursor(self._conn.cursor())
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        try:
+            self._conn.rollback()
+        except Exception:
+            pass
+
+    def close(self):
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+
+def _connect_turso():
+    return TursoConnection(libsql.connect(TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN))
+
+
+if USE_TURSO:
+    print("✅ Utilisation de Turso (libSQL distant) pour la persistance des données")
+else:
+    print("✅ Utilisation de SQLite pour la persistance des données")
 REPLIT_DB_AVAILABLE = False
-print("✅ Utilisation de SQLite pour la persistance des données")
 
 # Import du bot Telegram utilisateur uniquement
 TELEGRAM_ENABLED = False
@@ -84,7 +221,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Database initialization
 def init_db():
-    conn = sqlite3.connect(DATABASE)
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     # Users table
@@ -167,259 +304,6 @@ def init_db():
             FOREIGN KEY (project_id) REFERENCES projects (id)
         )
     ''')
-
-    # Transactions table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            type TEXT NOT NULL,
-            amount REAL NOT NULL,
-            status TEXT DEFAULT 'pending',
-            transaction_hash TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-
-def backup_critical_data():
-    """Sauvegarder les données critiques dans Replit DB"""
-    if not REPLIT_DB_AVAILABLE:
-        return
-    
-    try:
-        conn = get_db_connection()
-        
-        # Sauvegarder TOUS les investissements ROI (actifs et terminés)
-        all_investments = conn.execute('''
-            SELECT * FROM user_investments ORDER BY start_date DESC
-        ''').fetchall()
-        
-        investments_data = []
-        for inv in all_investments:
-            investments_data.append(dict(inv))
-        
-        replit_db['all_investments_history'] = json.dumps(investments_data, default=str)
-        
-        # Sauvegarder TOUS les investissements staking (actifs et terminés)
-        all_staking = conn.execute('''
-            SELECT * FROM user_staking ORDER BY start_date DESC
-        ''').fetchall()
-        
-        staking_data = []
-        for stake in all_staking:
-            staking_data.append(dict(stake))
-        
-        replit_db['all_staking_history'] = json.dumps(staking_data, default=str)
-        
-        # Sauvegarder TOUS les bots de trading (actifs et terminés)
-        all_bots = conn.execute('''
-            SELECT * FROM user_trading_bots ORDER BY start_date DESC
-        ''').fetchall()
-        
-        bots_data = []
-        for bot in all_bots:
-            bots_data.append(dict(bot))
-        
-        replit_db['all_bots_history'] = json.dumps(bots_data, default=str)
-        
-        # Sauvegarder TOUS les copy trades (actifs et terminés)
-        all_copy_trades = conn.execute('''
-            SELECT * FROM user_copy_trading ORDER BY start_date DESC
-        ''').fetchall()
-        
-        copy_trades_data = []
-        for trade in all_copy_trades:
-            copy_trades_data.append(dict(trade))
-        
-        replit_db['all_copy_trading_history'] = json.dumps(copy_trades_data, default=str)
-        
-        # Sauvegarder TOUS les investissements projets
-        all_projects = conn.execute('''
-            SELECT * FROM project_investments ORDER BY investment_date DESC
-        ''').fetchall()
-        
-        projects_data = []
-        for proj in all_projects:
-            projects_data.append(dict(proj))
-        
-        replit_db['all_projects_history'] = json.dumps(projects_data, default=str)
-        
-        # Sauvegarder TOUTES les transactions
-        all_transactions = conn.execute('''
-            SELECT * FROM transactions ORDER BY created_at DESC
-        ''').fetchall()
-        
-        transactions_data = []
-        for trans in all_transactions:
-            transactions_data.append(dict(trans))
-        
-        replit_db['all_transactions_history'] = json.dumps(transactions_data, default=str)
-        
-        # Sauvegarder les soldes utilisateurs
-        users = conn.execute('SELECT id, email, balance, first_name, last_name FROM users').fetchall()
-        users_data = []
-        for user in users:
-            users_data.append(dict(user))
-        
-        replit_db['user_balances'] = json.dumps(users_data, default=str)
-        
-        # Sauvegarder les plans pour restauration
-        roi_plans = conn.execute('SELECT * FROM roi_plans').fetchall()
-        roi_plans_data = []
-        for plan in roi_plans:
-            roi_plans_data.append(dict(plan))
-        replit_db['roi_plans_backup'] = json.dumps(roi_plans_data, default=str)
-        
-        replit_db['last_backup'] = datetime.now().isoformat()
-        conn.close()
-        
-        print("✅ Sauvegarde complète de l'historique effectuée")
-        
-    except Exception as e:
-        print(f"❌ Erreur sauvegarde: {e}")
-
-def restore_critical_data():
-    """Restaurer les données critiques depuis Replit DB"""
-    if not REPLIT_DB_AVAILABLE:
-        return False
-    
-    try:
-        # Vérifier s'il y a une sauvegarde disponible
-        if 'last_backup' not in replit_db:
-            return False
-        
-        conn = get_db_connection()
-        
-        print("🔄 Restauration de l'historique complet depuis la sauvegarde...")
-        
-        # Restaurer TOUS les investissements ROI
-        if 'all_investments_history' in replit_db:
-            investments_data = json.loads(replit_db['all_investments_history'])
-            for inv in investments_data:
-                try:
-                    conn.execute('''
-                        INSERT OR REPLACE INTO user_investments 
-                        (id, user_id, plan_id, amount, start_date, end_date, daily_profit, total_earned, is_active, transaction_hash)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        inv.get('id'), inv.get('user_id'), inv.get('plan_id'), 
-                        inv.get('amount'), inv.get('start_date'), inv.get('end_date'),
-                        inv.get('daily_profit'), inv.get('total_earned', 0), 
-                        inv.get('is_active', 1), inv.get('transaction_hash')
-                    ))
-                except Exception as e:
-                    print(f"⚠️ Erreur restauration investissement {inv.get('id')}: {e}")
-        
-        # Restaurer TOUS les investissements staking
-        if 'all_staking_history' in replit_db:
-            staking_data = json.loads(replit_db['all_staking_history'])
-            for stake in staking_data:
-                try:
-                    conn.execute('''
-                        INSERT OR REPLACE INTO user_staking 
-                        (id, user_id, plan_id, amount, start_date, end_date, is_active, is_withdrawn, total_earned, transaction_hash)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        stake.get('id'), stake.get('user_id'), stake.get('plan_id'),
-                        stake.get('amount'), stake.get('start_date'), stake.get('end_date'),
-                        stake.get('is_active', 1), stake.get('is_withdrawn', 0),
-                        stake.get('total_earned', 0), stake.get('transaction_hash')
-                    ))
-                except Exception as e:
-                    print(f"⚠️ Erreur restauration staking {stake.get('id')}: {e}")
-        
-        # Restaurer TOUS les bots de trading
-        if 'all_bots_history' in replit_db:
-            bots_data = json.loads(replit_db['all_bots_history'])
-            for bot in bots_data:
-                try:
-                    conn.execute('''
-                        INSERT OR REPLACE INTO user_trading_bots 
-                        (id, user_id, strategy_id, amount, start_date, end_date, is_active, total_profit, daily_profit, last_profit_date, transaction_hash)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        bot.get('id'), bot.get('user_id'), bot.get('strategy_id'),
-                        bot.get('amount'), bot.get('start_date'), bot.get('end_date'),
-                        bot.get('is_active', 1), bot.get('total_profit', 0),
-                        bot.get('daily_profit', 0), bot.get('last_profit_date'), bot.get('transaction_hash')
-                    ))
-                except Exception as e:
-                    print(f"⚠️ Erreur restauration bot {bot.get('id')}: {e}")
-        
-        # Restaurer TOUS les copy trades
-        if 'all_copy_trading_history' in replit_db:
-            copy_trades_data = json.loads(replit_db['all_copy_trading_history'])
-            for trade in copy_trades_data:
-                try:
-                    conn.execute('''
-                        INSERT OR REPLACE INTO user_copy_trading 
-                        (id, user_id, trader_id, amount, start_date, end_date, is_active, total_profit, copy_ratio, transaction_hash)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        trade.get('id'), trade.get('user_id'), trade.get('trader_id'),
-                        trade.get('amount'), trade.get('start_date'), trade.get('end_date'),
-                        trade.get('is_active', 1), trade.get('total_profit', 0),
-                        trade.get('copy_ratio', 1.0), trade.get('transaction_hash')
-                    ))
-                except Exception as e:
-                    print(f"⚠️ Erreur restauration copy trade {trade.get('id')}: {e}")
-        
-        # Restaurer TOUS les investissements projets
-        if 'all_projects_history' in replit_db:
-            projects_data = json.loads(replit_db['all_projects_history'])
-            for proj in projects_data:
-                try:
-                    conn.execute('''
-                        INSERT OR REPLACE INTO project_investments 
-                        (id, user_id, project_id, amount, investment_date, transaction_hash)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (
-                        proj.get('id'), proj.get('user_id'), proj.get('project_id'),
-                        proj.get('amount'), proj.get('investment_date'), proj.get('transaction_hash')
-                    ))
-                except Exception as e:
-                    print(f"⚠️ Erreur restauration projet {proj.get('id')}: {e}")
-        
-        # Restaurer TOUTES les transactions
-        if 'all_transactions_history' in replit_db:
-            transactions_data = json.loads(replit_db['all_transactions_history'])
-            for trans in transactions_data:
-                try:
-                    conn.execute('''
-                        INSERT OR REPLACE INTO transactions 
-                        (id, user_id, type, amount, status, transaction_hash, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        trans.get('id'), trans.get('user_id'), trans.get('type'),
-                        trans.get('amount'), trans.get('status'), trans.get('transaction_hash'),
-                        trans.get('created_at'), trans.get('updated_at')
-                    ))
-                except Exception as e:
-                    print(f"⚠️ Erreur restauration transaction {trans.get('id')}: {e}")
-        
-        # Restaurer les soldes utilisateurs
-        if 'user_balances' in replit_db:
-            users_data = json.loads(replit_db['user_balances'])
-            for user in users_data:
-                try:
-                    conn.execute('''
-                        UPDATE users SET balance = ? WHERE id = ?
-                    ''', (user.get('balance', 0), user.get('id')))
-                except Exception as e:
-                    print(f"⚠️ Erreur restauration solde utilisateur {user.get('id')}: {e}")
-        
-        conn.commit()
-        conn.close()
-        
-        last_backup = replit_db.get('last_backup', 'Inconnue')
-        print(f"✅ Historique complet restauré depuis la sauvegarde du {last_backup}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur restauration: {e}")
-        return False
 
     # Transactions table
     cursor.execute('''
@@ -791,16 +675,16 @@ def restore_critical_data():
         cursor.execute('''
             INSERT INTO projects (title, description, category, target_amount, expected_return, duration_months, min_investment, max_investment, deadline)
         VALUES 
-        ('Crypto Mining Farm', '⛏️ Ferme de minage crypto moderne ! 15% de retour en 6 mois.', 'Mining', 10000, 0.15, 6, 100, 1000, datetime("now", "+30 days")),
-        ('E-commerce Platform', '🛒 Plateforme e-commerce innovante ! 18% de retour en 8 mois.', 'Tech', 15000, 0.18, 8, 100, 1500, datetime("now", "+45 days")),
-        ('Green Energy Solar', '☀️ Énergie solaire verte ! 20% de retour en 12 mois.', 'Énergie', 25000, 0.20, 12, 100, 2500, datetime("now", "+60 days")),
-        ('FinTech Startup', '💳 Startup fintech prometteuse ! 22% de retour en 10 mois.', 'Finance', 20000, 0.22, 10, 100, 2000, datetime("now", "+40 days")),
-        ('Real Estate Fund', '🏠 Fonds immobilier diversifié ! 25% de retour en 18 mois.', 'Immobilier', 50000, 0.25, 18, 100, 5000, datetime("now", "+75 days")),
-        ('AI Tech Company', '🤖 Entreprise tech IA ! 28% de retour en 14 mois.', 'Intelligence Artificielle', 35000, 0.28, 14, 100, 3500, datetime("now", "+50 days")),
-        ('Renewable Energy', '🌱 Énergies renouvelables ! 30% de retour en 20 mois.', 'Écologie', 40000, 0.30, 20, 100, 4000, datetime("now", "+65 days")),
-        ('Biotech Innovation', '🧬 Innovation biotechnologique ! 35% de retour en 24 mois.', 'Biotechnologie', 60000, 0.35, 24, 100, 6000, datetime("now", "+80 days")),
-        ('Space Technology', '🚀 Technologie spatiale ! 40% de retour en 30 mois.', 'Espace', 80000, 0.40, 30, 100, 8000, datetime("now", "+90 days")),
-        ('Quantum Computing', '⚛️ Informatique quantique ! 50% de retour en 36 mois.', 'Quantique', 100000, 0.50, 36, 100, 10000, datetime("now", "+120 days"))
+        ('Crypto Mining Farm', '⛏️ Ferme de minage crypto moderne ! 15% de retour en 6 mois.', 'Mining', 10000, 0.15, 6, 100, 1000, datetime('now', '+30 days')),
+        ('E-commerce Platform', '🛒 Plateforme e-commerce innovante ! 18% de retour en 8 mois.', 'Tech', 15000, 0.18, 8, 100, 1500, datetime('now', '+45 days')),
+        ('Green Energy Solar', '☀️ Énergie solaire verte ! 20% de retour en 12 mois.', 'Énergie', 25000, 0.20, 12, 100, 2500, datetime('now', '+60 days')),
+        ('FinTech Startup', '💳 Startup fintech prometteuse ! 22% de retour en 10 mois.', 'Finance', 20000, 0.22, 10, 100, 2000, datetime('now', '+40 days')),
+        ('Real Estate Fund', '🏠 Fonds immobilier diversifié ! 25% de retour en 18 mois.', 'Immobilier', 50000, 0.25, 18, 100, 5000, datetime('now', '+75 days')),
+        ('AI Tech Company', '🤖 Entreprise tech IA ! 28% de retour en 14 mois.', 'Intelligence Artificielle', 35000, 0.28, 14, 100, 3500, datetime('now', '+50 days')),
+        ('Renewable Energy', '🌱 Énergies renouvelables ! 30% de retour en 20 mois.', 'Écologie', 40000, 0.30, 20, 100, 4000, datetime('now', '+65 days')),
+        ('Biotech Innovation', '🧬 Innovation biotechnologique ! 35% de retour en 24 mois.', 'Biotechnologie', 60000, 0.35, 24, 100, 6000, datetime('now', '+80 days')),
+        ('Space Technology', '🚀 Technologie spatiale ! 40% de retour en 30 mois.', 'Espace', 80000, 0.40, 30, 100, 8000, datetime('now', '+90 days')),
+        ('Quantum Computing', '⚛️ Informatique quantique ! 50% de retour en 36 mois.', 'Quantique', 100000, 0.50, 36, 100, 10000, datetime('now', '+120 days'))
     ''')
 
     # Insert trading strategies (only if not exist)
@@ -843,6 +727,244 @@ def restore_critical_data():
 
     conn.commit()
     conn.close()
+def backup_critical_data():
+    """Sauvegarder les données critiques dans Replit DB"""
+    if not REPLIT_DB_AVAILABLE:
+        return
+    
+    try:
+        conn = get_db_connection()
+        
+        # Sauvegarder TOUS les investissements ROI (actifs et terminés)
+        all_investments = conn.execute('''
+            SELECT * FROM user_investments ORDER BY start_date DESC
+        ''').fetchall()
+        
+        investments_data = []
+        for inv in all_investments:
+            investments_data.append(dict(inv))
+        
+        replit_db['all_investments_history'] = json.dumps(investments_data, default=str)
+        
+        # Sauvegarder TOUS les investissements staking (actifs et terminés)
+        all_staking = conn.execute('''
+            SELECT * FROM user_staking ORDER BY start_date DESC
+        ''').fetchall()
+        
+        staking_data = []
+        for stake in all_staking:
+            staking_data.append(dict(stake))
+        
+        replit_db['all_staking_history'] = json.dumps(staking_data, default=str)
+        
+        # Sauvegarder TOUS les bots de trading (actifs et terminés)
+        all_bots = conn.execute('''
+            SELECT * FROM user_trading_bots ORDER BY start_date DESC
+        ''').fetchall()
+        
+        bots_data = []
+        for bot in all_bots:
+            bots_data.append(dict(bot))
+        
+        replit_db['all_bots_history'] = json.dumps(bots_data, default=str)
+        
+        # Sauvegarder TOUS les copy trades (actifs et terminés)
+        all_copy_trades = conn.execute('''
+            SELECT * FROM user_copy_trading ORDER BY start_date DESC
+        ''').fetchall()
+        
+        copy_trades_data = []
+        for trade in all_copy_trades:
+            copy_trades_data.append(dict(trade))
+        
+        replit_db['all_copy_trading_history'] = json.dumps(copy_trades_data, default=str)
+        
+        # Sauvegarder TOUS les investissements projets
+        all_projects = conn.execute('''
+            SELECT * FROM project_investments ORDER BY investment_date DESC
+        ''').fetchall()
+        
+        projects_data = []
+        for proj in all_projects:
+            projects_data.append(dict(proj))
+        
+        replit_db['all_projects_history'] = json.dumps(projects_data, default=str)
+        
+        # Sauvegarder TOUTES les transactions
+        all_transactions = conn.execute('''
+            SELECT * FROM transactions ORDER BY created_at DESC
+        ''').fetchall()
+        
+        transactions_data = []
+        for trans in all_transactions:
+            transactions_data.append(dict(trans))
+        
+        replit_db['all_transactions_history'] = json.dumps(transactions_data, default=str)
+        
+        # Sauvegarder les soldes utilisateurs
+        users = conn.execute('SELECT id, email, balance, first_name, last_name FROM users').fetchall()
+        users_data = []
+        for user in users:
+            users_data.append(dict(user))
+        
+        replit_db['user_balances'] = json.dumps(users_data, default=str)
+        
+        # Sauvegarder les plans pour restauration
+        roi_plans = conn.execute('SELECT * FROM roi_plans').fetchall()
+        roi_plans_data = []
+        for plan in roi_plans:
+            roi_plans_data.append(dict(plan))
+        replit_db['roi_plans_backup'] = json.dumps(roi_plans_data, default=str)
+        
+        replit_db['last_backup'] = datetime.now().isoformat()
+        conn.close()
+        
+        print("✅ Sauvegarde complète de l'historique effectuée")
+        
+    except Exception as e:
+        print(f"❌ Erreur sauvegarde: {e}")
+
+def restore_critical_data():
+    """Restaurer les données critiques depuis Replit DB"""
+    if not REPLIT_DB_AVAILABLE:
+        return False
+    
+    try:
+        # Vérifier s'il y a une sauvegarde disponible
+        if 'last_backup' not in replit_db:
+            return False
+        
+        conn = get_db_connection()
+        
+        print("🔄 Restauration de l'historique complet depuis la sauvegarde...")
+        
+        # Restaurer TOUS les investissements ROI
+        if 'all_investments_history' in replit_db:
+            investments_data = json.loads(replit_db['all_investments_history'])
+            for inv in investments_data:
+                try:
+                    conn.execute('''
+                        INSERT OR REPLACE INTO user_investments 
+                        (id, user_id, plan_id, amount, start_date, end_date, daily_profit, total_earned, is_active, transaction_hash)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        inv.get('id'), inv.get('user_id'), inv.get('plan_id'), 
+                        inv.get('amount'), inv.get('start_date'), inv.get('end_date'),
+                        inv.get('daily_profit'), inv.get('total_earned', 0), 
+                        inv.get('is_active', 1), inv.get('transaction_hash')
+                    ))
+                except Exception as e:
+                    print(f"⚠️ Erreur restauration investissement {inv.get('id')}: {e}")
+        
+        # Restaurer TOUS les investissements staking
+        if 'all_staking_history' in replit_db:
+            staking_data = json.loads(replit_db['all_staking_history'])
+            for stake in staking_data:
+                try:
+                    conn.execute('''
+                        INSERT OR REPLACE INTO user_staking 
+                        (id, user_id, plan_id, amount, start_date, end_date, is_active, is_withdrawn, total_earned, transaction_hash)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        stake.get('id'), stake.get('user_id'), stake.get('plan_id'),
+                        stake.get('amount'), stake.get('start_date'), stake.get('end_date'),
+                        stake.get('is_active', 1), stake.get('is_withdrawn', 0),
+                        stake.get('total_earned', 0), stake.get('transaction_hash')
+                    ))
+                except Exception as e:
+                    print(f"⚠️ Erreur restauration staking {stake.get('id')}: {e}")
+        
+        # Restaurer TOUS les bots de trading
+        if 'all_bots_history' in replit_db:
+            bots_data = json.loads(replit_db['all_bots_history'])
+            for bot in bots_data:
+                try:
+                    conn.execute('''
+                        INSERT OR REPLACE INTO user_trading_bots 
+                        (id, user_id, strategy_id, amount, start_date, end_date, is_active, total_profit, daily_profit, last_profit_date, transaction_hash)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        bot.get('id'), bot.get('user_id'), bot.get('strategy_id'),
+                        bot.get('amount'), bot.get('start_date'), bot.get('end_date'),
+                        bot.get('is_active', 1), bot.get('total_profit', 0),
+                        bot.get('daily_profit', 0), bot.get('last_profit_date'), bot.get('transaction_hash')
+                    ))
+                except Exception as e:
+                    print(f"⚠️ Erreur restauration bot {bot.get('id')}: {e}")
+        
+        # Restaurer TOUS les copy trades
+        if 'all_copy_trading_history' in replit_db:
+            copy_trades_data = json.loads(replit_db['all_copy_trading_history'])
+            for trade in copy_trades_data:
+                try:
+                    conn.execute('''
+                        INSERT OR REPLACE INTO user_copy_trading 
+                        (id, user_id, trader_id, amount, start_date, end_date, is_active, total_profit, copy_ratio, transaction_hash)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        trade.get('id'), trade.get('user_id'), trade.get('trader_id'),
+                        trade.get('amount'), trade.get('start_date'), trade.get('end_date'),
+                        trade.get('is_active', 1), trade.get('total_profit', 0),
+                        trade.get('copy_ratio', 1.0), trade.get('transaction_hash')
+                    ))
+                except Exception as e:
+                    print(f"⚠️ Erreur restauration copy trade {trade.get('id')}: {e}")
+        
+        # Restaurer TOUS les investissements projets
+        if 'all_projects_history' in replit_db:
+            projects_data = json.loads(replit_db['all_projects_history'])
+            for proj in projects_data:
+                try:
+                    conn.execute('''
+                        INSERT OR REPLACE INTO project_investments 
+                        (id, user_id, project_id, amount, investment_date, transaction_hash)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        proj.get('id'), proj.get('user_id'), proj.get('project_id'),
+                        proj.get('amount'), proj.get('investment_date'), proj.get('transaction_hash')
+                    ))
+                except Exception as e:
+                    print(f"⚠️ Erreur restauration projet {proj.get('id')}: {e}")
+        
+        # Restaurer TOUTES les transactions
+        if 'all_transactions_history' in replit_db:
+            transactions_data = json.loads(replit_db['all_transactions_history'])
+            for trans in transactions_data:
+                try:
+                    conn.execute('''
+                        INSERT OR REPLACE INTO transactions 
+                        (id, user_id, type, amount, status, transaction_hash, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        trans.get('id'), trans.get('user_id'), trans.get('type'),
+                        trans.get('amount'), trans.get('status'), trans.get('transaction_hash'),
+                        trans.get('created_at'), trans.get('updated_at')
+                    ))
+                except Exception as e:
+                    print(f"⚠️ Erreur restauration transaction {trans.get('id')}: {e}")
+        
+        # Restaurer les soldes utilisateurs
+        if 'user_balances' in replit_db:
+            users_data = json.loads(replit_db['user_balances'])
+            for user in users_data:
+                try:
+                    conn.execute('''
+                        UPDATE users SET balance = ? WHERE id = ?
+                    ''', (user.get('balance', 0), user.get('id')))
+                except Exception as e:
+                    print(f"⚠️ Erreur restauration solde utilisateur {user.get('id')}: {e}")
+        
+        conn.commit()
+        conn.close()
+        
+        last_backup = replit_db.get('last_backup', 'Inconnue')
+        print(f"✅ Historique complet restauré depuis la sauvegarde du {last_backup}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erreur restauration: {e}")
+        return False
+
 
 # État global pour l'activation admin
 ADMIN_ACCESS_ENABLED = False
@@ -913,6 +1035,8 @@ def get_db_connection():
     max_retries = 5
     for attempt in range(max_retries):
         try:
+            if USE_TURSO:
+                return _connect_turso()
             conn = sqlite3.connect(DATABASE, timeout=60.0)
             conn.row_factory = sqlite3.Row
             # Enable WAL mode for better concurrency
@@ -932,7 +1056,7 @@ def get_db_connection():
         except Exception as e:
             print(f"❌ Unexpected database error: {e}")
             raise e
-    return conn
+    raise RuntimeError("Impossible d'établir une connexion à la base de données")
 
 def generate_transaction_hash():
     return hashlib.sha256(f"{datetime.now().isoformat()}{secrets.token_hex(16)}".encode()).hexdigest()
