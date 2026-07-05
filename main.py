@@ -10,6 +10,7 @@ from functools import wraps
 import threading
 import time
 import sqlite3
+import urllib.request
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 
@@ -24,6 +25,35 @@ TELEGRAM_USER_BOT_ENABLED = False
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SESSION_SECRET') or os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+
+
+@app.route('/healthz')
+def healthz():
+    return 'ok', 200
+
+
+def keep_server_awake():
+    """Envoie une requête à l'application elle-même pour éviter la mise en veille (ex: Render free tier)."""
+    keep_alive_url = os.environ.get('RENDER_EXTERNAL_URL') or os.environ.get('KEEP_ALIVE_URL')
+    if not keep_alive_url:
+        return
+    try:
+        ping_url = keep_alive_url.rstrip('/') + '/healthz'
+        urllib.request.urlopen(ping_url, timeout=10)
+        print(f"🔄 Ping de maintien en ligne envoyé à {ping_url}")
+    except Exception as e:
+        print(f"⚠️ Erreur ping de maintien en ligne: {e}")
+
+
+_keep_alive_scheduler = BackgroundScheduler()
+_keep_alive_scheduler.add_job(
+    func=keep_server_awake,
+    trigger="interval",
+    minutes=10,
+    id='keep_alive_ping'
+)
+_keep_alive_scheduler.start()
+atexit.register(lambda: _keep_alive_scheduler.shutdown(wait=False))
 
 # Configuration PWA
 @app.route('/sw.js')
