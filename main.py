@@ -1818,15 +1818,22 @@ def portfolio_invest():
 @login_required
 def submit_deposit():
     """Soumettre une demande de dépôt"""
-    data = request.get_json()
-    amount = float(data.get('amount', 0))
-    transaction_hash = data.get('transaction_hash', '')
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        raw_amount = data.get('amount', 0)
+        amount = float(raw_amount) if raw_amount else 0.0
+        transaction_hash = str(data.get('transaction_hash') or '').strip()
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Données invalides'}), 400
 
-    if not amount or not transaction_hash:
-        return jsonify({'error': 'Montant et hash de transaction requis'}), 400
+    if not amount:
+        return jsonify({'error': 'Montant requis'}), 400
 
     if amount < 1:
         return jsonify({'error': 'Montant minimum de dépôt: 1 USDT'}), 400
+
+    if not transaction_hash:
+        transaction_hash = 'EN_ATTENTE'
 
     conn = get_db_connection()
 
@@ -1840,11 +1847,13 @@ def submit_deposit():
     conn.commit()
     conn.close()
 
+    hash_display = transaction_hash[:16] + '...' if len(transaction_hash) > 16 else transaction_hash
+
     # Notification admin pour nouveau dépôt
     add_notification(
         1,  # ID admin par défaut
         'Nouveau dépôt à vérifier',
-        f'Nouvelle demande de dépôt: {amount} USDT de {session.get("email", "Utilisateur")} - Hash: {transaction_hash[:16]}...',
+        f'Nouvelle demande de dépôt: {amount} USDT de {session.get("email", "Utilisateur")} - Hash: {hash_display}',
         'info'
     )
 
