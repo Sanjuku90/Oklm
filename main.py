@@ -3423,23 +3423,26 @@ def log_security_action(user_id, action, details=""):
     except Exception as e:
         print(f"❌ Erreur log sécurité: {e}")
 
-if __name__ == '__main__':
+def initialize_app():
+    """Initialise la base de données, les comptes admin et le scheduler.
+    Exécuté au chargement du module afin de fonctionner aussi bien avec
+    `python main.py` qu'avec un serveur WSGI comme gunicorn (utilisé en
+    production sur Render), qui n'exécute jamais le bloc `__main__`."""
     # Initialize database with retry logic
     max_init_retries = 3
     for init_attempt in range(max_init_retries):
         try:
             init_db()
             print("✅ Base de données initialisée avec succès")
-            
+
             # Tenter de restaurer les données depuis la sauvegarde
             if REPLIT_DB_AVAILABLE:
                 restore_critical_data()
-            
+
             break
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e) and init_attempt < max_init_retries - 1:
                 print(f"⚠️ Base de données verrouillée, tentative {init_attempt + 1}/{max_init_retries}")
-                import time
                 time.sleep(2)
                 continue
             else:
@@ -3468,7 +3471,7 @@ if __name__ == '__main__':
         minute=0,
         id='daily_profits'
     )
-    
+
     # Sauvegarde périodique toutes les 30 minutes si Replit DB disponible
     if REPLIT_DB_AVAILABLE:
         scheduler.add_job(
@@ -3477,10 +3480,14 @@ if __name__ == '__main__':
             minutes=30,
             id='backup_data'
         )
-    
+
     scheduler.start()
 
     # Shutdown scheduler when exiting the app
     atexit.register(lambda: scheduler.shutdown())
 
+
+initialize_app()
+
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
