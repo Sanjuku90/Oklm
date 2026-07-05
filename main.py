@@ -1825,8 +1825,8 @@ def submit_deposit():
     if not amount or not transaction_hash:
         return jsonify({'error': 'Montant et hash de transaction requis'}), 400
 
-    if amount < 10:
-        return jsonify({'error': 'Montant minimum de dépôt: 10 USDT'}), 400
+    if amount < 1:
+        return jsonify({'error': 'Montant minimum de dépôt: 1 USDT'}), 400
 
     conn = get_db_connection()
 
@@ -2224,8 +2224,9 @@ def activate_admin_access():
     duration = int(data.get('duration', 30))  # Durée en minutes
 
     # Codes d'activation sécurisés (peuvent être changés périodiquement)
+    admin_code = os.environ.get('ADMIN_CODE', 'ADMIN2024!')
     VALID_CODES = [
-        'ADMIN2024!',
+        admin_code,
         'SECURE_ACCESS_' + datetime.now().strftime('%Y%m%d'),
         'EMERGENCY_' + str(datetime.now().hour * 100 + datetime.now().minute)
     ]

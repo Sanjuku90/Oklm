@@ -60,3 +60,4 @@ stack = "FLASK_VANILLA_JS"
 
 [userenv.shared]
 SECRET_KEY = "3bef36deb547bdc2ece46b9cfef66db4b44d692069a42dbc90f03397268397f6"
+ADMIN_CODE = "ADMIN2024!"
