@@ -2274,6 +2274,23 @@
                             }
                         });
                     });
+
+                    // Vérifier activement s'il existe une nouvelle version (au chargement,
+                    // quand l'onglet redevient visible, puis toutes les 5 minutes) pour ne pas
+                    // dépendre uniquement du cycle de vie par défaut du navigateur.
+                    swRegistration.update();
+
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.visibilityState === 'visible' && swRegistration) {
+                            swRegistration.update();
+                        }
+                    });
+
+                    setInterval(() => {
+                        if (swRegistration) {
+                            swRegistration.update();
+                        }
+                    }, 5 * 60 * 1000);
                     
                 } catch (error) {
                     console.error('[PWA] Erreur enregistrement Service Worker:', error);
@@ -2387,9 +2404,8 @@
             `;
             
             document.body.appendChild(updateNotification);
-            
-            // Auto-hide après 10 secondes
-            setTimeout(dismissUpdate, 10000);
+            // Pas de disparition automatique : une mise à jour peut corriger un bug critique
+            // (ex: dépôts/retraits bloqués), donc le bandeau reste visible jusqu'à action de l'utilisateur.
         }
         
         function updatePWA() {
