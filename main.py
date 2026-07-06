@@ -149,10 +149,22 @@ def _connect_turso():
     return TursoConnection(libsql.connect(TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN))
 
 
+_IS_RENDER = bool(os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'))
+
 if USE_TURSO:
     print("✅ Utilisation de Turso (libSQL distant) pour la persistance des données")
 else:
-    print("✅ Utilisation de SQLite pour la persistance des données")
+    print("⚠️ Utilisation de SQLite LOCAL pour la persistance des données (non-persistant en production)")
+    if _IS_RENDER:
+        print("=" * 80)
+        print("🚨 ALERTE CRITIQUE: Vous êtes sur Render mais TURSO_DATABASE_URL / TURSO_AUTH_TOKEN")
+        print("   ne sont PAS configurées (ou invalides). Toutes les données (utilisateurs,")
+        print("   dépôts, retraits...) sont stockées dans un fichier SQLite local qui sera")
+        print("   PERDU au prochain redémarrage/déploiement du service.")
+        print("   ➜ Corrigez ceci dans le tableau de bord Render: Environment > ajoutez")
+        print("     TURSO_DATABASE_URL et TURSO_AUTH_TOKEN avec les vraies valeurs, puis")
+        print("     redéployez le service.")
+        print("=" * 80)
 REPLIT_DB_AVAILABLE = False
 
 # Import du bot Telegram utilisateur uniquement
