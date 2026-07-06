@@ -2,3 +2,4 @@
 - [Orphaned dead code from bad merges](orphaned-dead-code-detection.md) — a pre-seeded local DB file can mask years-old dead code that never actually creates its tables; verify on fresh DB.
 - [PWA service worker crashing successful page loads](sw-cache-referenceerror.md) — undefined cache-name var in sw.js fetch handler swallows successful 2xx navigations; invisible to curl tests, only breaks real browsers.
 - [Render deploy silently loses data on restart](render-turso-fallback-data-loss.md) — sync:false env vars in render.yaml aren't auto-filled; if missing on Render dashboard, app falls back to ephemeral local SQLite that resets every restart/deploy.
+- [Client-side validation blocking "optional" fields](client-validation-optional-field-mismatch.md) — a form JS required a field the UI labeled optional, silently blocking submission before any network request; check both when "X doesn't work" shows zero server-side hits.

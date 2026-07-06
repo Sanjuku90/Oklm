@@ -1248,8 +1248,8 @@ async function submitDeposit() {
     const amount = document.getElementById('depositAmount').value;
     const hash = document.getElementById('transactionHash').value;
 
-    if (!amount || !hash) {
-        showNotification('❌ Veuillez remplir tous les champs', 'error');
+    if (!amount || parseFloat(amount) < 1) {
+        showNotification('❌ Veuillez indiquer un montant valide (minimum 1$)', 'error');
         return;
     }
 
