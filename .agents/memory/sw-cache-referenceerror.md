@@ -1,0 +1,12 @@
+---
+name: PWA service worker crashing successful authenticated page loads
+description: A ReferenceError on an undefined cache-name constant inside a service worker's fetch handler can silently swallow successful (2xx) navigation responses for logged-in users, even though the server logs show success.
+---
+
+Symptom: a backend action (e.g. registration/login) genuinely succeeds server-side — access logs show `200` with the correct response body/size for the JSON success payload — but the user experiences it as "still not working" (stuck, blank, or failed navigation) after being redirected to an authenticated page (e.g. `/dashboard`).
+
+Root cause pattern: `static/sw.js` (or equivalent) defines a `fetch` event handler that branches by URL pattern (e.g. `/dashboard`, `/profile`, `/api/*`) into a "network first with cache" strategy. That strategy does `await caches.open(SOME_CACHE_NAME)` on a successful (`response.ok`) network response, but `SOME_CACHE_NAME` was never declared as a constant (only sibling constants like `CACHE_NAME`/`STATIC_CACHE` existed). This throws inside the `try` block, gets swallowed by the `catch`, which then tries `caches.match(request)` (nothing cached yet for a first-time authenticated visit) and re-throws — causing `event.respondWith()` to reject and the browser to show a failed/blank navigation *despite the real server response already being correct*.
+
+**Why:** Because the crash only fires on 2xx responses (redirect/error responses like 302 skip the caching branch since `response.ok` is false for non-2xx), this bug is easy to miss when testing with curl/plain HTTP checks — it only manifests for a real browser with the service worker active, on the *successful* path, making "the feature is actually broken end-to-end for real users but every isolated backend/API test passes" a strong signature of this class of bug.
+
+**How to apply:** When a user reports a flow (registration/login/etc.) "still failing" in production but server logs/responses show success, check for a PWA service worker (`sw.js`/`manifest.json`) and audit every cache-name variable referenced in its `fetch` handlers against what's actually declared as a constant at the top of the file — an undefined reference here is invisible to normal HTTP-level testing and only surfaces client-side. Bump the cache version string when fixing so existing installed service workers get replaced.

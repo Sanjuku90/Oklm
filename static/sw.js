@@ -1,6 +1,7 @@
-const CACHE_NAME = 'winwin-v1.1.0';
-const STATIC_CACHE = 'winwin-static-v1.1.0';
-const DYNAMIC_CACHE = 'winwin-dynamic-v1.1.0';
+const CACHE_NAME = 'winwin-v1.1.1';
+const STATIC_CACHE = 'winwin-static-v1.1.1';
+const DYNAMIC_CACHE = 'winwin-dynamic-v1.1.1';
+const API_CACHE_NAME = 'winwin-api-v1.1.1';
 
 // Ressources à mettre en cache immédiatement
 const STATIC_CACHE_URLS = [
