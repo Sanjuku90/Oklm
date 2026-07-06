@@ -2357,6 +2357,80 @@ def admin_dashboard():
 
     return render_template('admin_dashboard.html', stats=stats, transactions=transactions)
 
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    """Liste des utilisateurs avec possibilité de modifier leur solde"""
+    conn = get_db_connection()
+
+    search_query = request.args.get('q', '').strip()
+
+    if search_query:
+        like_term = f'%{search_query}%'
+        users = conn.execute('''
+            SELECT id, email, first_name, last_name, balance, created_at
+            FROM users
+            WHERE email LIKE ? OR first_name LIKE ? OR last_name LIKE ?
+            ORDER BY created_at DESC
+        ''', (like_term, like_term, like_term)).fetchall()
+    else:
+        users = conn.execute('''
+            SELECT id, email, first_name, last_name, balance, created_at
+            FROM users
+            ORDER BY created_at DESC
+        ''').fetchall()
+
+    conn.close()
+
+    return render_template('admin_users.html', users=users, search_query=search_query)
+
+@app.route('/admin/users/<int:user_id>/balance', methods=['POST'])
+@admin_required
+def admin_update_user_balance(user_id):
+    """Modifier manuellement le solde d'un utilisateur"""
+    data = request.get_json()
+    new_balance = data.get('balance')
+    reason = (data.get('reason') or '').strip()
+
+    if new_balance is None:
+        return jsonify({'error': 'Le nouveau solde est requis'}), 400
+
+    try:
+        new_balance = float(new_balance)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Solde invalide'}), 400
+
+    if new_balance < 0:
+        return jsonify({'error': 'Le solde ne peut pas être négatif'}), 400
+
+    conn = get_db_connection()
+
+    user = conn.execute('SELECT id, email, balance FROM users WHERE id = ?', (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({'error': 'Utilisateur introuvable'}), 404
+
+    old_balance = user['balance'] or 0.0
+
+    conn.execute('UPDATE users SET balance = ? WHERE id = ?', (new_balance, user_id))
+    conn.commit()
+    conn.close()
+
+    admin_id = session.get('user_id')
+    details = f"Solde modifié pour {user['email']}: {old_balance:.2f} → {new_balance:.2f} USDT"
+    if reason:
+        details += f" | Raison: {reason}"
+    log_security_action(admin_id, 'admin_balance_update', details)
+
+    add_notification(
+        user_id,
+        'Solde mis à jour',
+        f'Votre solde a été ajusté par un administrateur. Nouveau solde: {new_balance:.2f} USDT',
+        'info'
+    )
+
+    return jsonify({'success': True, 'new_balance': new_balance})
+
 @app.route('/admin-activation-required')
 def admin_activation_required():
     """Page d'activation admin requis - ACCÈS LIBRE"""

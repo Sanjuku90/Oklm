@@ -92,6 +92,19 @@
             Actions Rapides
         </h2>
         <div class="quick-actions-grid">
+            <a href="{{ url_for('admin_users') }}" class="quick-action-card support">
+                <div class="action-icon">
+                    <i class="fas fa-users-cog"></i>
+                </div>
+                <div class="action-content">
+                    <div class="action-title">Utilisateurs</div>
+                    <div class="action-subtitle">Modifier les soldes</div>
+                </div>
+                <div class="action-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </a>
+
             <a href="{{ url_for('admin_support') }}" class="quick-action-card support">
                 <div class="action-icon">
                     <i class="fas fa-headset"></i>
