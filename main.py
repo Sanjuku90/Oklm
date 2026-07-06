@@ -627,7 +627,7 @@ def init_db():
         ('Mega Booster', '💥 Plan mega booster ! 30% quotidien pendant 5 jours.', 0.30, 5, 100, 3000),
         ('Super Express', '⚡ Plan super express ! 25% quotidien pendant 7 jours.', 0.25, 7, 100, 4000),
         ('Lightning Pro', '⚡ Plan lightning pro ! 22% quotidien pendant 10 jours.', 0.22, 10, 100, 5000),
-        ('Turbo Flash', '🔥 Plan turbo flash ! 20% quotidien pendant 14 jours.', 0.20, 14, 100, 8000)
+        ('Turbo Flash', '🔥 Plan turbo flash ! 20% quotidien pendant 14 jours.', 0.20, 14, 30, 200)
     ''')
 
     # Insert top 10 staking plans - Starting from 20 USDT (only if not exist)
