@@ -1,7 +1,7 @@
-const CACHE_NAME = 'winwin-v1.1.1';
-const STATIC_CACHE = 'winwin-static-v1.1.1';
-const DYNAMIC_CACHE = 'winwin-dynamic-v1.1.1';
-const API_CACHE_NAME = 'winwin-api-v1.1.1';
+const CACHE_NAME = 'winwin-v1.1.2';
+const STATIC_CACHE = 'winwin-static-v1.1.2';
+const DYNAMIC_CACHE = 'winwin-dynamic-v1.1.2';
+const API_CACHE_NAME = 'winwin-api-v1.1.2';
 
 // Ressources à mettre en cache immédiatement
 const STATIC_CACHE_URLS = [
@@ -83,6 +83,14 @@ self.addEventListener('fetch', event => {
 
   // Ignorer les requêtes non-HTTP
   if (!request.url.startsWith('http')) {
+    return;
+  }
+
+  // Ne jamais intercepter/cacher les requêtes non-GET (POST/PUT/DELETE, ex: /deposit, /withdraw, /login)
+  // L'API Cache ne supporte que les requêtes GET ; tenter de mettre en cache une réponse POST lève une
+  // exception qui fait échouer toute la requête côté navigateur, même quand le serveur répond avec succès.
+  if (request.method !== 'GET') {
+    event.respondWith(fetch(request));
     return;
   }
 
