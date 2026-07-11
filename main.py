@@ -2446,10 +2446,6 @@ def subscribe_premium():
             (session['user_id'],)
         ).fetchone()
 
-        if user['balance'] < PREMIUM_PRICE:
-            conn.close()
-            return jsonify({'error': f'Solde insuffisant. L\'abonnement Premium coûte {PREMIUM_PRICE} USDT.'}), 400
-
         now = datetime.now()
 
         # Si déjà premium et pas expiré, prolonger
@@ -2475,10 +2471,10 @@ def subscribe_premium():
                 VALUES (?, ?, ?, ?, 1)
             ''', (session['user_id'], now.isoformat(), new_exp.isoformat(), PREMIUM_PRICE))
 
-        # Mettre à jour le statut premium de l'utilisateur
+        # Mettre à jour le statut premium de l'utilisateur (sans déduire du solde)
         conn.execute(
-            'UPDATE users SET is_premium = 1, premium_expires_at = ?, balance = balance - ? WHERE id = ?',
-            (new_exp.isoformat(), PREMIUM_PRICE, session['user_id'])
+            'UPDATE users SET is_premium = 1, premium_expires_at = ? WHERE id = ?',
+            (new_exp.isoformat(), session['user_id'])
         )
 
         # Enregistrer la transaction
