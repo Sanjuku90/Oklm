@@ -1372,85 +1372,122 @@ async function subscribePremium() {
 function renewPremium() { subscribePremium(); }
 
 // ─── Countdown timers & auto-claim ───────────────────────────────────────────
-const CYCLE_SECONDS = 86400; // 24h
+// Versement quotidien à 12h00 pour tout le monde
+
+function nextNoonTs() {
+    const now  = new Date();
+    const noon = new Date(now);
+    noon.setHours(12, 0, 0, 0);
+    if (now >= noon) noon.setDate(noon.getDate() + 1); // demain à 12h
+    return noon.getTime();
+}
+
+function prevNoonTs() {
+    // Dernier midi passé (référence de début du cycle actuel)
+    const now  = new Date();
+    const noon = new Date(now);
+    noon.setHours(12, 0, 0, 0);
+    if (now < noon) noon.setDate(noon.getDate() - 1); // hier à 12h
+    return noon.getTime();
+}
+
+function alreadyCreditedToday(lastCreditedISO) {
+    if (!lastCreditedISO) return false;
+    const lc   = new Date(lastCreditedISO);
+    const now  = new Date();
+    // Crédité aujourd'hui après 12h ?
+    return lc.toDateString() === now.toDateString() && lc.getHours() >= 12;
+}
 
 function initCountdowns() {
     const cards = document.querySelectorAll('[data-investment-id][data-last-credited]');
     cards.forEach(card => {
-        const id          = card.dataset.investmentId;
-        const lastCredited = card.dataset.lastCredited;    // ISO string
-        const endDateStr  = card.dataset.endDate;
-        const dailyProfit = parseFloat(card.dataset.dailyProfit) || 0;
-        const totalEarned = parseFloat(card.dataset.totalEarned) || 0;
+        const id           = card.dataset.investmentId;
+        const lastCredited = card.dataset.lastCredited;
+        const endDateStr   = card.dataset.endDate;
+        const dailyProfit  = parseFloat(card.dataset.dailyProfit) || 0;
+        const totalEarned  = parseFloat(card.dataset.totalEarned) || 0;
+        if (!id) return;
 
-        if (!lastCredited || !id) return;
+        const endTs  = endDateStr ? new Date(endDateStr).getTime() : Infinity;
+        const ready  = !alreadyCreditedToday(lastCredited) && Date.now() >= new Date(new Date().setHours(12,0,0,0)).getTime();
 
-        const lastTs  = new Date(lastCredited).getTime();
-        const nextTs  = lastTs + CYCLE_SECONDS * 1000;
-        const endTs   = endDateStr ? new Date(endDateStr).getTime() : Infinity;
-
-        tickCountdown(id, nextTs, endTs, dailyProfit, totalEarned);
+        tickCountdown(id, nextNoonTs(), endTs, dailyProfit, totalEarned, ready);
     });
 }
 
-function tickCountdown(id, nextTs, endTs, dailyProfit, baseTotalEarned) {
-    const countdownEl  = document.getElementById(`countdown-${id}`);
-    const claimBtn     = document.getElementById(`claim-btn-${id}`);
-    const progressEl   = document.getElementById(`progress-bar-${id}`);
-    const earnedEl     = document.getElementById(`earned-${id}`);
+function tickCountdown(id, noonTs, endTs, dailyProfit, baseTotalEarned, readyNow) {
+    const countdownEl = document.getElementById(`countdown-${id}`);
+    const claimBtn    = document.getElementById(`claim-btn-${id}`);
+    const progressEl  = document.getElementById(`progress-bar-${id}`);
+    const earnedEl    = document.getElementById(`earned-${id}`);
 
     if (!countdownEl) return;
 
     let localTotalEarned = baseTotalEarned;
-    let localNextTs = nextTs;
+
+    // Si déjà prêt au chargement (on est après 12h et pas encore crédité)
+    if (readyNow) {
+        setReady(id, claimBtn, countdownEl);
+        setTimeout(() => autoClaimProfit(id), 3000);
+        return;
+    }
+
+    // Référence : le cycle va de prevNoon à nextNoon (24h)
+    const cycleStart = prevNoonTs();
+    const cycleEnd   = noonTs;
+    const cycleDur   = cycleEnd - cycleStart;
 
     const interval = setInterval(() => {
-        const now     = Date.now();
-        const remaining = Math.max(0, localNextTs - now);
-        const elapsed   = CYCLE_SECONDS * 1000 - remaining;
-        const progress  = Math.min(100, (elapsed / (CYCLE_SECONDS * 1000)) * 100);
+        const now       = Date.now();
 
-        // Afficher décompte
+        // Plan terminé ?
+        if (now > endTs) {
+            clearInterval(interval);
+            countdownEl.textContent = 'Terminé';
+            if (claimBtn) { claimBtn.disabled = true; claimBtn.innerHTML = '✅ Plan terminé'; }
+            return;
+        }
+
+        const remaining = Math.max(0, cycleEnd - now);
+        const elapsed   = cycleDur - remaining;
+        const progress  = Math.min(100, (elapsed / cycleDur) * 100);
+
+        // Décompte HH:MM:SS
         const h = Math.floor(remaining / 3600000);
         const m = Math.floor((remaining % 3600000) / 60000);
         const s = Math.floor((remaining % 60000) / 1000);
         countdownEl.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 
-        // Barre de progression
         if (progressEl) progressEl.style.width = progress + '%';
 
-        // Aperçu gains accumulés en temps réel dans le cycle
+        // Aperçu progressif du gain dans ce cycle
         if (earnedEl) {
-            const preview = localTotalEarned + (dailyProfit * elapsed / (CYCLE_SECONDS * 1000));
+            const preview = localTotalEarned + (dailyProfit * elapsed / cycleDur);
             earnedEl.textContent = preview.toFixed(4) + ' USDT';
         }
 
-        // Plan terminé
-        if (now > endTs) {
-            clearInterval(interval);
-            countdownEl.textContent = 'Terminé';
-            if (claimBtn) { claimBtn.disabled = true; claimBtn.textContent = '✅ Plan terminé'; }
-            return;
-        }
-
-        // Prêt à réclamer
+        // C'est l'heure !
         if (remaining === 0) {
             clearInterval(interval);
-            countdownEl.textContent = '00:00:00';
-            countdownEl.style.color = '#34d399';
-            if (claimBtn) {
-                claimBtn.disabled = false;
-                claimBtn.style.cssText = 'background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:10px;padding:0.5rem 1rem;font-size:0.82rem;font-weight:700;cursor:pointer;animation:pulse 1s infinite;';
-                claimBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Percevoir le gain';
-            }
-            // Auto-claim après 3 secondes
+            setReady(id, claimBtn, countdownEl);
             setTimeout(() => autoClaimProfit(id), 3000);
-            return;
         }
     }, 1000);
 
-    // Stocker le interval pour pouvoir le relancer après un claim
-    window[`inv_interval_${id}`] = { interval, setNextTs: (ts) => { localNextTs = ts; }, addEarned: (v) => { localTotalEarned += v; } };
+    window[`inv_interval_${id}`] = {
+        interval,
+        addEarned: (v) => { localTotalEarned += v; }
+    };
+}
+
+function setReady(id, claimBtn, countdownEl) {
+    if (countdownEl) { countdownEl.textContent = '12:00 — Versement !'; countdownEl.style.color = '#34d399'; }
+    if (claimBtn) {
+        claimBtn.disabled = false;
+        claimBtn.style.cssText = 'background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:10px;padding:0.5rem 1rem;font-size:0.82rem;font-weight:700;cursor:pointer;';
+        claimBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Percevoir le gain';
+    }
 }
 
 async function claimProfit(id) {
@@ -1471,31 +1508,29 @@ async function claimProfit(id) {
                 balEl.setAttribute('data-base-balance', data.new_balance);
             }
 
-            // Redémarrer le timer
+            // Redémarrer le timer vers le prochain midi
             if (data.plan_ended) {
                 document.getElementById(`inv-card-${id}`)?.remove();
             } else {
-                const newNextTs = Date.now() + CYCLE_SECONDS * 1000;
+                // Stopper l'ancien interval s'il existe
                 const handler = window[`inv_interval_${id}`];
-                if (handler) {
-                    clearInterval(handler.interval);
-                    handler.setNextTs(newNextTs);
-                    handler.addEarned(data.profit);
-                }
+                if (handler) clearInterval(handler.interval);
+
                 const countdownEl = document.getElementById(`countdown-${id}`);
-                if (countdownEl) countdownEl.style.color = '#a5b4fc';
+                if (countdownEl) { countdownEl.textContent = '--:--:--'; countdownEl.style.color = '#a5b4fc'; }
                 if (claimBtn) {
                     claimBtn.disabled = true;
                     claimBtn.style.cssText = 'background:rgba(99,102,241,0.15);color:#6b7280;border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:0.5rem 1rem;font-size:0.82rem;font-weight:600;cursor:not-allowed;';
                     claimBtn.innerHTML = '<i class="fas fa-lock mr-1"></i>En attente';
                 }
-                // Redémarrer le décompte
+
+                // Relancer le décompte vers le prochain midi
                 const card = document.getElementById(`inv-card-${id}`);
                 if (card) {
                     const dailyProfit = parseFloat(card.dataset.dailyProfit) || 0;
                     const endDateStr  = card.dataset.endDate;
                     const endTs = endDateStr ? new Date(endDateStr).getTime() : Infinity;
-                    tickCountdown(id, newNextTs, endTs, dailyProfit, data.new_total_earned || 0);
+                    tickCountdown(id, nextNoonTs(), endTs, dailyProfit, data.new_total_earned || 0, false);
                 }
             }
         } else {

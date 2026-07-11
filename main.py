@@ -1646,7 +1646,7 @@ def dashboard():
 @app.route('/api/claim-daily-profit/<int:investment_id>', methods=['POST'])
 @login_required
 def claim_daily_profit(investment_id):
-    """Verser le gain quotidien d'un investissement quand le cycle de 24h est écoulé."""
+    """Verser le gain quotidien d'un investissement. Versement disponible chaque jour à 12h00."""
     from datetime import datetime, timedelta
     conn = get_db_connection()
     try:
@@ -1663,13 +1663,24 @@ def claim_daily_profit(investment_id):
 
         now = datetime.now()
 
-        # Calculer la prochaine date de versement (24h après le dernier crédit)
+        # Prochain versement : aujourd'hui à 12h00 si pas encore passé, sinon demain à 12h00
+        today_noon = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        if now < today_noon:
+            next_credit = today_noon
+        else:
+            next_credit = today_noon + timedelta(days=1)
+
+        # Dernier crédit
         last_credited = inv['last_credited_at'] or inv['start_date']
         if isinstance(last_credited, str):
             last_credited = datetime.fromisoformat(last_credited.replace('Z', ''))
-        next_credit = last_credited + timedelta(hours=24)
 
-        if now < next_credit:
+        # Déjà crédité aujourd'hui après 12h ?
+        already_credited_today = (
+            last_credited.date() == now.date() and last_credited.hour >= 12
+        )
+
+        if now < today_noon or already_credited_today:
             seconds_left = int((next_credit - now).total_seconds())
             conn.close()
             return jsonify({'error': 'Pas encore prêt', 'seconds_left': seconds_left}), 400
@@ -4083,25 +4094,26 @@ def initialize_app():
 
     # Setup scheduler for daily profit calculation and backup
     scheduler = BackgroundScheduler()
+    # Gains quotidiens à 12h00 pour tout le monde
     scheduler.add_job(
         func=calculate_daily_profits,
         trigger="cron",
-        hour=0,
+        hour=12,
         minute=0,
         id='daily_profits'
     )
 
-    # Bonus premium : +1$ tous les 2 jours à minuit
+    # Bonus premium : +1$ tous les 2 jours à 12h05
     scheduler.add_job(
         func=credit_premium_bonuses,
         trigger="cron",
         day='*/2',
-        hour=0,
+        hour=12,
         minute=5,
         id='premium_bonuses'
     )
 
-    # Remise à zéro des compteurs de retraits journaliers
+    # Remise à zéro des compteurs de retraits journaliers à minuit
     scheduler.add_job(
         func=reset_withdrawal_counters,
         trigger="cron",
@@ -4110,7 +4122,7 @@ def initialize_app():
         id='reset_withdrawal_counters'
     )
 
-    # Vérification des expirations premium
+    # Vérification des expirations premium à minuit
     scheduler.add_job(
         func=check_premium_expirations,
         trigger="cron",
