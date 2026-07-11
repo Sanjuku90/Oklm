@@ -635,12 +635,26 @@ def init_db():
         cursor.execute('''
             INSERT INTO roi_plans (name, description, daily_rate, duration_days, min_amount, max_amount)
         VALUES 
-        ('Rocket Launch', '🚀 Plan meteore ultra-rentable ! 35% quotidien pendant 3 jours.', 0.35, 3, 100, 2000),
         ('Mega Booster', '💥 Plan mega booster ! 30% quotidien pendant 5 jours.', 0.30, 5, 100, 3000),
-        ('Super Express', '⚡ Plan super express ! 25% quotidien pendant 7 jours.', 0.25, 7, 100, 4000),
-        ('Lightning Pro', '⚡ Plan lightning pro ! 22% quotidien pendant 10 jours.', 0.22, 10, 100, 5000),
-        ('Turbo Flash', '🔥 Plan turbo flash ! 20% quotidien pendant 14 jours.', 0.20, 14, 30, 200)
+        ('Hyper Profit', '🔥 Plan hyper profit ! 60% quotidien pendant 3 jours.', 0.60, 3, 150, 5000)
     ''')
+    else:
+        # Désactiver les anciens plans non souhaités
+        cursor.execute('''
+            UPDATE roi_plans SET is_active = 0
+            WHERE name IN ('Rocket Launch', 'Super Express', 'Lightning Pro', 'Turbo Flash')
+        ''')
+        # S'assurer que Mega Booster est actif
+        cursor.execute('''
+            UPDATE roi_plans SET is_active = 1 WHERE name = 'Mega Booster'
+        ''')
+        # Ajouter Hyper Profit si pas encore présent
+        hp_exists = cursor.execute("SELECT COUNT(*) as count FROM roi_plans WHERE name = 'Hyper Profit'").fetchone()['count']
+        if hp_exists == 0:
+            cursor.execute('''
+                INSERT INTO roi_plans (name, description, daily_rate, duration_days, min_amount, max_amount)
+                VALUES ('Hyper Profit', '🔥 Plan hyper profit ! 60% quotidien pendant 3 jours.', 0.60, 3, 150, 5000)
+            ''')
 
     # Insert top 10 staking plans - Starting from 20 USDT (only if not exist)
     staking_count = cursor.execute('SELECT COUNT(*) as count FROM staking_plans').fetchone()['count']
