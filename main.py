@@ -601,6 +601,60 @@ def init_db():
         )
     ''')
 
+    # Premium Subscriptions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS premium_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL,
+            amount_paid REAL DEFAULT 13.0,
+            is_active BOOLEAN DEFAULT 1,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
+    # Add last_credited_at to user_investments if missing
+    try:
+        inv_cols = [c[1] for c in cursor.execute("PRAGMA table_info(user_investments)").fetchall()]
+        if 'last_credited_at' not in inv_cols:
+            cursor.execute('ALTER TABLE user_investments ADD COLUMN last_credited_at TIMESTAMP')
+            # Initialise à start_date pour les investissements existants
+            cursor.execute('UPDATE user_investments SET last_credited_at = start_date WHERE last_credited_at IS NULL')
+            print("✅ Colonne last_credited_at ajoutée à user_investments")
+    except Exception as e:
+        print(f"⚠️ Erreur ajout last_credited_at: {e}")
+
+    # Add premium + withdrawal tracking columns to users if missing
+    try:
+        users_cols = [c[1] for c in cursor.execute("PRAGMA table_info(users)").fetchall()]
+        if 'is_premium' not in users_cols:
+            cursor.execute('ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT 0')
+            print("✅ Colonne is_premium ajoutée à users")
+        if 'premium_expires_at' not in users_cols:
+            cursor.execute('ALTER TABLE users ADD COLUMN premium_expires_at TIMESTAMP')
+            print("✅ Colonne premium_expires_at ajoutée à users")
+        if 'daily_withdrawal_count' not in users_cols:
+            cursor.execute('ALTER TABLE users ADD COLUMN daily_withdrawal_count INTEGER DEFAULT 0')
+            print("✅ Colonne daily_withdrawal_count ajoutée à users")
+        if 'last_withdrawal_date' not in users_cols:
+            cursor.execute('ALTER TABLE users ADD COLUMN last_withdrawal_date DATE')
+            print("✅ Colonne last_withdrawal_date ajoutée à users")
+    except Exception as e:
+        print(f"⚠️ Erreur ajout colonnes premium/retrait à users: {e}")
+
+    # Add priority column to transactions if missing
+    try:
+        tx_cols = [c[1] for c in cursor.execute("PRAGMA table_info(transactions)").fetchall()]
+        if 'priority' not in tx_cols:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN priority TEXT DEFAULT 'normal'")
+            print("✅ Colonne priority ajoutée à transactions")
+        if 'fee' not in tx_cols:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN fee REAL DEFAULT 0.0")
+            print("✅ Colonne fee ajoutée à transactions")
+    except Exception as e:
+        print(f"⚠️ Erreur ajout colonnes priority/fee à transactions: {e}")
+
     # Insert default FAQ entries
     cursor.execute('''
         INSERT OR IGNORE INTO faq (question, answer, category) VALUES 
@@ -1125,6 +1179,15 @@ def calculate_daily_profits():
     # Plus d'investissements ROI actifs
     active_investments = []
 
+    # Récupérer tous les investissements ROI actifs
+    active_investments = conn.execute('''
+        SELECT ui.*, u.email, rp.name as plan_name
+        FROM user_investments ui
+        JOIN users u ON ui.user_id = u.id
+        JOIN roi_plans rp ON ui.plan_id = rp.id
+        WHERE ui.is_active = 1
+    ''').fetchall()
+
     # Récupérer tous les bots de trading actifs
     active_bots = conn.execute('''
         SELECT utb.*, u.email, ts.name as strategy_name
@@ -1299,6 +1362,86 @@ def calculate_daily_profits():
     conn.close()
     print("✅ Calcul des profits quotidiens terminé")
 
+
+def credit_premium_bonuses():
+    """Crédite 1$ tous les 2 jours aux abonnés premium actifs."""
+    from datetime import datetime
+    conn = get_db_connection()
+    try:
+        now = datetime.now()
+        # Récupérer les abonnés premium dont l'abonnement est encore valide
+        premium_users = conn.execute('''
+            SELECT ps.user_id, u.email, u.first_name
+            FROM premium_subscriptions ps
+            JOIN users u ON ps.user_id = u.id
+            WHERE ps.is_active = 1 AND ps.expires_at > ?
+        ''', (now.isoformat(),)).fetchall()
+
+        for pu in premium_users:
+            conn.execute('UPDATE users SET balance = balance + 1.0 WHERE id = ?', (pu['user_id'],))
+            conn.execute('''
+                INSERT INTO transactions (user_id, type, amount, status, transaction_hash, priority)
+                VALUES (?, 'premium_bonus', 1.0, 'completed', ?, 'normal')
+            ''', (pu['user_id'], generate_transaction_hash()))
+            add_notification(
+                pu['user_id'],
+                '💎 Bonus Premium reçu',
+                'Vous avez reçu 1.00 USDT de bonus Premium. Profitez de vos avantages exclusifs !',
+                'success'
+            )
+            print(f"💎 Bonus premium +1$ crédité à {pu['email']}")
+
+        conn.commit()
+        print(f"✅ Bonus premium distribué à {len(premium_users)} abonné(s)")
+    except Exception as e:
+        print(f"❌ Erreur credit_premium_bonuses: {e}")
+    finally:
+        conn.close()
+
+
+def reset_withdrawal_counters():
+    """Remet à zéro les compteurs de retraits journaliers à minuit."""
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE users SET daily_withdrawal_count = 0")
+        conn.commit()
+        print("✅ Compteurs de retraits journaliers remis à zéro")
+    except Exception as e:
+        print(f"❌ Erreur reset_withdrawal_counters: {e}")
+    finally:
+        conn.close()
+
+
+def check_premium_expirations():
+    """Désactive les abonnements premium expirés."""
+    from datetime import datetime
+    conn = get_db_connection()
+    try:
+        now = datetime.now()
+        expired = conn.execute('''
+            SELECT user_id FROM premium_subscriptions
+            WHERE is_active = 1 AND expires_at <= ?
+        ''', (now.isoformat(),)).fetchall()
+
+        for row in expired:
+            conn.execute('UPDATE premium_subscriptions SET is_active = 0 WHERE user_id = ?', (row['user_id'],))
+            conn.execute('UPDATE users SET is_premium = 0, premium_expires_at = NULL WHERE id = ?', (row['user_id'],))
+            add_notification(
+                row['user_id'],
+                'Abonnement Premium expiré',
+                'Votre abonnement Premium a expiré. Renouvelez-le pour continuer à bénéficier de vos avantages.',
+                'warning'
+            )
+            print(f"⚠️ Premium expiré pour user_id={row['user_id']}")
+
+        conn.commit()
+        print(f"✅ Vérification expiration premium: {len(expired)} abonnement(s) expiré(s)")
+    except Exception as e:
+        print(f"❌ Erreur check_premium_expirations: {e}")
+    finally:
+        conn.close()
+
+
 # Routes
 @app.route('/')
 def index():
@@ -1404,8 +1547,25 @@ def dashboard():
     # Get user info
     user = conn.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
 
-    # Get active investments (sans les plans ROI)
+    # Get active ROI investments
+    investments_raw = conn.execute('''
+        SELECT ui.*, rp.name as plan_name, rp.daily_rate, rp.duration_days
+        FROM user_investments ui
+        JOIN roi_plans rp ON ui.plan_id = rp.id
+        WHERE ui.user_id = ? AND ui.is_active = 1
+        ORDER BY ui.start_date DESC
+    ''', (session['user_id'],)).fetchall()
+
     investments = []
+    for inv in investments_raw:
+        d = dict(inv)
+        # Normalise dates to ISO strings for JS
+        for col in ('start_date', 'end_date', 'last_credited_at'):
+            if d.get(col) and not isinstance(d[col], str):
+                d[col] = d[col].isoformat()
+            elif not d.get(col):
+                d[col] = d.get('start_date', '')
+        investments.append(d)
 
     # Get project investments
     project_investments = conn.execute('''
@@ -1446,21 +1606,139 @@ def dashboard():
             notif_dict['created_at'] = datetime.now()
         notifications.append(notif_dict)
 
+    # Récupérer infos premium (avant de fermer conn)
+    user_premium = conn.execute(
+        'SELECT is_premium, premium_expires_at FROM users WHERE id = ?',
+        (session['user_id'],)
+    ).fetchone()
+
     conn.close()
 
-    # Debug info
     print(f"DEBUG: User {session['user_id']} has {len(investments)} active investments")
-    for inv in investments:
-        print(f"DEBUG: Investment {inv['id']}: {inv['plan_name']}, amount: {inv['amount']}, active: {inv['is_active']}")
+
+    is_premium = bool(user_premium['is_premium']) if user_premium else False
+    premium_expires = None
+    premium_days_left = 0
+    if is_premium and user_premium['premium_expires_at']:
+        try:
+            exp = datetime.fromisoformat(str(user_premium['premium_expires_at']))
+            if exp > datetime.now():
+                premium_expires = exp.strftime('%d/%m/%Y')
+                premium_days_left = (exp - datetime.now()).days
+            else:
+                is_premium = False
+        except Exception:
+            is_premium = False
 
     return render_template('dashboard.html', 
                          user=user, 
                          investments=investments, 
                          project_investments=project_investments,
-                         notifications=notifications)
+                         notifications=notifications,
+                         is_premium=is_premium,
+                         premium_expires=premium_expires,
+                         premium_days_left=premium_days_left)
 
 
 
+
+
+@app.route('/api/claim-daily-profit/<int:investment_id>', methods=['POST'])
+@login_required
+def claim_daily_profit(investment_id):
+    """Verser le gain quotidien d'un investissement quand le cycle de 24h est écoulé."""
+    from datetime import datetime, timedelta
+    conn = get_db_connection()
+    try:
+        inv = conn.execute('''
+            SELECT ui.*, rp.name as plan_name, rp.duration_days
+            FROM user_investments ui
+            JOIN roi_plans rp ON ui.plan_id = rp.id
+            WHERE ui.id = ? AND ui.user_id = ? AND ui.is_active = 1
+        ''', (investment_id, session['user_id'])).fetchone()
+
+        if not inv:
+            conn.close()
+            return jsonify({'error': 'Investissement non trouvé ou inactif'}), 404
+
+        now = datetime.now()
+
+        # Calculer la prochaine date de versement (24h après le dernier crédit)
+        last_credited = inv['last_credited_at'] or inv['start_date']
+        if isinstance(last_credited, str):
+            last_credited = datetime.fromisoformat(last_credited.replace('Z', ''))
+        next_credit = last_credited + timedelta(hours=24)
+
+        if now < next_credit:
+            seconds_left = int((next_credit - now).total_seconds())
+            conn.close()
+            return jsonify({'error': 'Pas encore prêt', 'seconds_left': seconds_left}), 400
+
+        # Vérifier si le plan est toujours dans sa durée
+        end_date = inv['end_date']
+        if isinstance(end_date, str):
+            end_date = datetime.fromisoformat(end_date.replace('Z', ''))
+        if end_date and now > end_date:
+            # Plan terminé — désactiver
+            conn.execute('UPDATE user_investments SET is_active = 0 WHERE id = ?', (investment_id,))
+            conn.commit()
+            conn.close()
+            add_notification(
+                session['user_id'],
+                f'Plan {inv["plan_name"]} terminé',
+                f'Votre plan {inv["plan_name"]} est arrivé à terme. Total gagné : {inv["total_earned"]:.2f} USDT.',
+                'info'
+            )
+            return jsonify({'success': True, 'plan_ended': True, 'message': f'Plan {inv["plan_name"]} terminé !'}), 200
+
+        daily_profit = float(inv['daily_profit'])
+
+        # Créditer le gain
+        conn.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (daily_profit, session['user_id']))
+        conn.execute('''
+            UPDATE user_investments
+            SET total_earned = total_earned + ?, last_credited_at = ?
+            WHERE id = ?
+        ''', (daily_profit, now.isoformat(), investment_id))
+        conn.execute('''
+            INSERT INTO transactions (user_id, type, amount, status, transaction_hash)
+            VALUES (?, 'daily_profit', ?, 'completed', ?)
+        ''', (session['user_id'], daily_profit, generate_transaction_hash()))
+        conn.commit()
+
+        # Nouveau solde + nouveau total gagné
+        row = conn.execute(
+            'SELECT balance FROM users WHERE id = ?', (session['user_id'],)
+        ).fetchone()
+        new_balance = row['balance']
+        new_total_earned_row = conn.execute(
+            'SELECT total_earned FROM user_investments WHERE id = ?', (investment_id,)
+        ).fetchone()
+        new_total_earned = float(new_total_earned_row['total_earned']) if new_total_earned_row else 0
+        conn.close()
+
+        add_notification(
+            session['user_id'],
+            f'💰 Gain reçu — {inv["plan_name"]}',
+            f'+{daily_profit:.2f} USDT versé automatiquement sur votre compte.',
+            'success'
+        )
+
+        return jsonify({
+            'success': True,
+            'profit': daily_profit,
+            'new_balance': new_balance,
+            'new_total_earned': new_total_earned,
+            'next_credit_in': 86400,
+            'message': f'+{daily_profit:.2f} USDT versés !'
+        })
+
+    except Exception as e:
+        print(f"❌ Erreur claim_daily_profit: {e}")
+        if 'conn' in locals():
+            try: conn.close()
+            except: pass
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/ultra-plans')
@@ -2051,6 +2329,7 @@ def submit_deposit():
 @login_required
 def submit_withdrawal():
     """Soumettre une demande de retrait"""
+    from datetime import datetime, date
     data = request.get_json()
     amount = float(data.get('amount', 0))
     withdrawal_address = data.get('withdrawal_address', '')
@@ -2063,49 +2342,165 @@ def submit_withdrawal():
 
     conn = get_db_connection()
 
-    # Vérifier le solde utilisateur
-    user = conn.execute('SELECT balance FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-    if user['balance'] < amount:
-        return jsonify({'error': 'Solde insuffisant'}), 400
+    # Récupérer l'utilisateur avec infos premium
+    user = conn.execute(
+        'SELECT balance, is_premium, premium_expires_at, daily_withdrawal_count, last_withdrawal_date FROM users WHERE id = ?',
+        (session['user_id'],)
+    ).fetchone()
 
-    # Débiter temporairement le solde
-    conn.execute('UPDATE users SET balance = balance - ? WHERE id = ?', (amount, session['user_id']))
+    # Vérifier si le premium est encore valide
+    is_premium = bool(user['is_premium'])
+    if is_premium and user['premium_expires_at']:
+        try:
+            exp = datetime.fromisoformat(str(user['premium_expires_at']))
+            if exp < datetime.now():
+                is_premium = False
+        except Exception:
+            is_premium = False
+
+    # Réinitialiser compteur si nouveau jour
+    today_str = date.today().isoformat()
+    last_wd_date = str(user['last_withdrawal_date']) if user['last_withdrawal_date'] else ''
+    current_count = user['daily_withdrawal_count'] if last_wd_date == today_str else 0
+
+    # Vérifier limite journalière pour non-premium (max 3/jour)
+    DAILY_LIMIT = 3
+    if not is_premium and current_count >= DAILY_LIMIT:
+        conn.close()
+        return jsonify({'error': f'Limite journalière de {DAILY_LIMIT} retraits atteinte. Passez Premium pour des retraits illimités.'}), 400
+
+    # Calculer les frais
+    if is_premium:
+        fee = 1.0  # Frais fixe $1 pour premium
+    else:
+        fee = max(3.0, round(amount * 0.05, 2))  # 5% min $3 pour standard
+
+    total_debit = amount + fee
+
+    if user['balance'] < total_debit:
+        conn.close()
+        return jsonify({'error': f'Solde insuffisant. Montant: {amount} USDT + frais: {fee} USDT = {total_debit} USDT requis'}), 400
+
+    # Priorité selon statut
+    priority = 'high' if is_premium else 'normal'
+
+    # Débiter le solde (montant + frais)
+    conn.execute(
+        'UPDATE users SET balance = balance - ?, daily_withdrawal_count = ?, last_withdrawal_date = ? WHERE id = ?',
+        (total_debit, current_count + 1, today_str, session['user_id'])
+    )
 
     # Créer la transaction en attente
     cursor = conn.execute('''
-        INSERT INTO transactions (user_id, type, amount, status, transaction_hash)
-        VALUES (?, 'withdrawal', ?, 'pending', ?)
-    ''', (session['user_id'], amount, f"withdrawal_{generate_transaction_hash()[:16]}"))
-
-    withdrawal_id = cursor.lastrowid
-
-    # Stocker l'adresse de retrait
-    conn.execute('''
-        UPDATE transactions 
-        SET transaction_hash = ? 
-        WHERE id = ?
-    ''', (f"{withdrawal_address}|{amount}", withdrawal_id))
+        INSERT INTO transactions (user_id, type, amount, status, transaction_hash, priority, fee)
+        VALUES (?, 'withdrawal', ?, 'pending', ?, ?, ?)
+    ''', (session['user_id'], amount, f"{withdrawal_address}|{amount}", priority, fee))
 
     conn.commit()
     conn.close()
 
-    # Notification admin pour nouveau retrait
+    # Notification admin
+    priority_label = '⚡ [PRIORITAIRE] ' if is_premium else ''
     add_notification(
-        1,  # ID admin par défaut
-        'Nouveau retrait à traiter',
-        f'Nouvelle demande de retrait: {amount} USDT de {session.get("email", "Utilisateur")} vers {withdrawal_address[:20]}...',
+        1,
+        f'{priority_label}Nouveau retrait à traiter',
+        f'{priority_label}Retrait: {amount} USDT (frais: {fee} USDT) de {session.get("email", "Utilisateur")} vers {withdrawal_address[:20]}...',
         'info'
     )
 
-    # Ajouter une notification à l'utilisateur
+    # Notification utilisateur
     add_notification(
         session['user_id'],
         'Retrait en cours de traitement',
-        f'Votre demande de retrait de {amount} USDT est en cours de traitement.',
+        f'Votre demande de retrait de {amount} USDT est en cours de traitement. Frais appliqués: {fee} USDT.',
         'info'
     )
 
-    return jsonify({'success': True, 'message': 'Demande de retrait soumise pour traitement'})
+    msg = 'Demande de retrait soumise avec priorité ⚡' if is_premium else 'Demande de retrait soumise pour traitement'
+    return jsonify({'success': True, 'message': msg, 'fee': fee, 'is_premium': is_premium})
+
+
+@app.route('/subscribe-premium', methods=['POST'])
+@login_required
+def subscribe_premium():
+    """Souscrire à l'abonnement Premium à 13$"""
+    from datetime import datetime, timedelta
+    PREMIUM_PRICE = 13.0
+    PREMIUM_DURATION_DAYS = 30
+
+    conn = get_db_connection()
+    try:
+        user = conn.execute(
+            'SELECT balance, is_premium, premium_expires_at FROM users WHERE id = ?',
+            (session['user_id'],)
+        ).fetchone()
+
+        if user['balance'] < PREMIUM_PRICE:
+            conn.close()
+            return jsonify({'error': f'Solde insuffisant. L\'abonnement Premium coûte {PREMIUM_PRICE} USDT.'}), 400
+
+        now = datetime.now()
+
+        # Si déjà premium et pas expiré, prolonger
+        existing = conn.execute(
+            'SELECT expires_at FROM premium_subscriptions WHERE user_id = ? AND is_active = 1',
+            (session['user_id'],)
+        ).fetchone()
+
+        if existing:
+            try:
+                current_exp = datetime.fromisoformat(str(existing['expires_at']))
+                new_exp = max(current_exp, now) + timedelta(days=PREMIUM_DURATION_DAYS)
+            except Exception:
+                new_exp = now + timedelta(days=PREMIUM_DURATION_DAYS)
+            conn.execute(
+                'UPDATE premium_subscriptions SET expires_at = ?, is_active = 1, amount_paid = amount_paid + ? WHERE user_id = ?',
+                (new_exp.isoformat(), PREMIUM_PRICE, session['user_id'])
+            )
+        else:
+            new_exp = now + timedelta(days=PREMIUM_DURATION_DAYS)
+            conn.execute('''
+                INSERT INTO premium_subscriptions (user_id, started_at, expires_at, amount_paid, is_active)
+                VALUES (?, ?, ?, ?, 1)
+            ''', (session['user_id'], now.isoformat(), new_exp.isoformat(), PREMIUM_PRICE))
+
+        # Mettre à jour le statut premium de l'utilisateur
+        conn.execute(
+            'UPDATE users SET is_premium = 1, premium_expires_at = ?, balance = balance - ? WHERE id = ?',
+            (new_exp.isoformat(), PREMIUM_PRICE, session['user_id'])
+        )
+
+        # Enregistrer la transaction
+        conn.execute('''
+            INSERT INTO transactions (user_id, type, amount, status, transaction_hash, priority)
+            VALUES (?, 'premium_subscription', ?, 'completed', ?, 'normal')
+        ''', (session['user_id'], PREMIUM_PRICE, generate_transaction_hash()))
+
+        conn.commit()
+        conn.close()
+
+        add_notification(
+            session['user_id'],
+            '💎 Bienvenue dans Premium !',
+            f'Votre abonnement Premium est actif jusqu\'au {new_exp.strftime("%d/%m/%Y")}. Profitez de vos avantages exclusifs !',
+            'success'
+        )
+
+        return jsonify({
+            'success': True,
+            'message': f'Abonnement Premium activé jusqu\'au {new_exp.strftime("%d/%m/%Y")} !',
+            'expires_at': new_exp.isoformat()
+        })
+
+    except Exception as e:
+        print(f"❌ Erreur subscribe_premium: {e}")
+        if 'conn' in locals():
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({'error': 'Erreur lors de la souscription. Réessayez.'}), 500
 
 # Support routes
 @app.route('/support')
@@ -3694,6 +4089,34 @@ def initialize_app():
         hour=0,
         minute=0,
         id='daily_profits'
+    )
+
+    # Bonus premium : +1$ tous les 2 jours à minuit
+    scheduler.add_job(
+        func=credit_premium_bonuses,
+        trigger="cron",
+        day='*/2',
+        hour=0,
+        minute=5,
+        id='premium_bonuses'
+    )
+
+    # Remise à zéro des compteurs de retraits journaliers
+    scheduler.add_job(
+        func=reset_withdrawal_counters,
+        trigger="cron",
+        hour=0,
+        minute=1,
+        id='reset_withdrawal_counters'
+    )
+
+    # Vérification des expirations premium
+    scheduler.add_job(
+        func=check_premium_expirations,
+        trigger="cron",
+        hour=0,
+        minute=2,
+        id='check_premium_expirations'
     )
 
     # Sauvegarde périodique toutes les 30 minutes si Replit DB disponible

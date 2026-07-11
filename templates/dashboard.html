@@ -1025,6 +1025,39 @@
         </div>
     </div>
 
+    <!-- Bannière Premium -->
+    <div class="fade-in" style="margin-bottom:1.5rem;">
+        {% if is_premium %}
+        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;box-shadow:0 4px 20px rgba(234,179,8,0.25);border:1px solid rgba(234,179,8,0.4);">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="font-size:2rem;">💎</div>
+                <div>
+                    <div style="color:#fbbf24;font-weight:700;font-size:1rem;">Statut Premium Actif</div>
+                    <div style="color:#94a3b8;font-size:0.8rem;">Expire le {{ premium_expires }} · {{ premium_days_left }}j restants</div>
+                    <div style="display:flex;gap:0.5rem;margin-top:0.4rem;flex-wrap:wrap;">
+                        <span style="background:rgba(234,179,8,0.15);color:#fbbf24;border-radius:20px;padding:2px 10px;font-size:0.7rem;font-weight:600;">⚡ Retraits prioritaires</span>
+                        <span style="background:rgba(234,179,8,0.15);color:#fbbf24;border-radius:20px;padding:2px 10px;font-size:0.7rem;font-weight:600;">💸 Frais $1</span>
+                        <span style="background:rgba(234,179,8,0.15);color:#fbbf24;border-radius:20px;padding:2px 10px;font-size:0.7rem;font-weight:600;">+$1 / 2 jours</span>
+                        <span style="background:rgba(234,179,8,0.15);color:#fbbf24;border-radius:20px;padding:2px 10px;font-size:0.7rem;font-weight:600;">♾ Retraits illimités</span>
+                    </div>
+                </div>
+            </div>
+            <button onclick="renewPremium()" style="background:rgba(234,179,8,0.2);color:#fbbf24;border:1px solid rgba(234,179,8,0.5);border-radius:8px;padding:0.4rem 0.9rem;font-size:0.8rem;font-weight:600;cursor:pointer;">Renouveler</button>
+        </div>
+        {% else %}
+        <div style="background:linear-gradient(135deg,#1e1b4b,#1a1a2e);border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;box-shadow:0 4px 20px rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="font-size:2rem;">💎</div>
+                <div>
+                    <div style="color:#a5b4fc;font-weight:700;font-size:1rem;">Passer Premium — $13/mois</div>
+                    <div style="color:#64748b;font-size:0.78rem;margin-top:0.2rem;">⚡ Retraits prioritaires · Frais $1 · +$1/2j · Illimité</div>
+                </div>
+            </div>
+            <button onclick="subscribePremium()" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:10px;padding:0.55rem 1.1rem;font-size:0.85rem;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 10px rgba(99,102,241,0.4);">S'abonner</button>
+        </div>
+        {% endif %}
+    </div>
+
     <!-- Investissements actifs -->
     <div class="investments-section fade-in">
         <h2 class="section-title">
@@ -1034,89 +1067,67 @@
 
         {% if investments %}
             {% for investment in investments %}
-            <div class="investment-card" data-investment-id="{{ investment.id }}">
+            <div class="investment-card" id="inv-card-{{ investment.id }}"
+                 data-investment-id="{{ investment.id }}"
+                 data-daily-profit="{{ investment.daily_profit }}"
+                 data-last-credited="{{ investment.last_credited_at or investment.start_date }}"
+                 data-end-date="{{ investment.end_date }}"
+                 data-total-earned="{{ investment.total_earned or 0 }}">
+
                 <div class="investment-header">
                     <div>
                         <div class="investment-title">{{ investment.plan_name }}</div>
                         <div class="investment-amount">{{ "%.2f"|format(investment.amount) }} USDT investis</div>
                     </div>
-                    <span class="status-badge {{ 'active' if investment.is_active else 'completed' }}">
-                        {{ 'Actif' if investment.is_active else 'Terminé' }}
-                    </span>
+                    <span class="status-badge active">Actif</span>
                 </div>
 
                 <div class="investment-stats">
                     <div class="investment-stat">
-                        <div class="investment-stat-label">Profit quotidien</div>
-                        <div class="investment-stat-value profit">{{ "%.2f"|format(investment.daily_profit) }}</div>
+                        <div class="investment-stat-label">Gain / cycle</div>
+                        <div class="investment-stat-value profit">+{{ "%.2f"|format(investment.daily_profit) }} USDT</div>
                     </div>
                     <div class="investment-stat">
                         <div class="investment-stat-label">Total gagné</div>
-                        <div class="investment-stat-value earnings realtime-earnings"
-                             data-base-earned="{{ investment.total_earned or 0 }}"
-                             data-daily-profit="{{ investment.daily_profit }}"
-                             data-start-date="{{ investment.start_date }}"
-                             data-is-active="{{ investment.is_active }}">
-                            {{ "%.2f"|format(investment.total_earned) }}
+                        <div class="investment-stat-value earnings" id="earned-{{ investment.id }}">
+                            {{ "%.4f"|format(investment.total_earned or 0) }} USDT
                         </div>
                     </div>
                     <div class="investment-stat">
-                        <div class="investment-stat-label">Rendement</div>
-                        <div class="investment-stat-value">
-                            {% if investment.amount and investment.amount > 0 %}
-                                {{ "%.1f"|format((investment.total_earned or 0) / investment.amount * 100) }}%
-                            {% else %}
-                                0%
-                            {% endif %}
+                        <div class="investment-stat-label">Fin du plan</div>
+                        <div class="investment-stat-value">{{ (investment.end_date or '')[:10] | replace('-', '/') }}</div>
+                    </div>
+                </div>
+
+                <!-- Countdown timer -->
+                <div id="timer-{{ investment.id }}" style="margin-top:0.9rem;background:linear-gradient(135deg,#0f172a,#1e293b);border-radius:12px;padding:0.9rem 1rem;border:1px solid rgba(99,102,241,0.3);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+                        <div>
+                            <div style="color:#94a3b8;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">⏳ Prochain versement dans</div>
+                            <div id="countdown-{{ investment.id }}" style="font-size:1.6rem;font-weight:800;color:#a5b4fc;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;">--:--:--</div>
                         </div>
+                        <button id="claim-btn-{{ investment.id }}"
+                                onclick="claimProfit({{ investment.id }})"
+                                disabled
+                                style="background:rgba(99,102,241,0.15);color:#6b7280;border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:0.5rem 1rem;font-size:0.82rem;font-weight:600;cursor:not-allowed;transition:all 0.3s;">
+                            <i class="fas fa-lock mr-1"></i>En attente
+                        </button>
                     </div>
-                </div>
-
-                {% if investment.is_active %}
-                <div class="live-earnings-indicator">
-                    <div class="live-earnings-text">
-                        💰 <span class="live-earnings" data-investment-id="{{ investment.id }}">Gains en temps réel...</span>
-                    </div>
-                </div>
-                {% endif %}
-
-                <div class="investment-footer">
-                    <div class="investment-date">
-                        ⏰ Fin: {% if investment.end_date %}
-                            {% if investment.end_date is string %}
-                                {{ investment.end_date[:10] | replace('-', '/') }}
-                            {% else %}
-                                {{ investment.end_date.strftime('%d/%m/%Y') }}
-                            {% endif %}
-                        {% else %}
-                            N/A
-                        {% endif %}
+                    <div id="progress-bar-container-{{ investment.id }}" style="margin-top:0.6rem;background:rgba(255,255,255,0.06);border-radius:20px;height:5px;overflow:hidden;">
+                        <div id="progress-bar-{{ investment.id }}" style="height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);border-radius:20px;width:0%;transition:width 1s linear;"></div>
                     </div>
                 </div>
             </div>
             {% endfor %}
         {% else %}
             <div class="empty-state">
-                <div class="empty-icon">
-                    <i class="fas fa-chart-line"></i>
-                </div>
+                <div class="empty-icon"><i class="fas fa-chart-line"></i></div>
                 <h3 class="empty-title">Aucun investissement actif</h3>
-                <p class="empty-description">
-                    Commence ton aventure crypto dès maintenant et découvre nos plans d'investissement sécurisés !
-                </p>
+                <p class="empty-description">Commence ton aventure crypto dès maintenant !</p>
                 <div class="empty-actions">
                     <a href="{{ url_for('ultra_plans') }}" class="btn-primary">
-                        <i class="fas fa-plus"></i>
-                        Découvrir nos plans
+                        <i class="fas fa-plus"></i>Découvrir nos plans
                     </a>
-                    <button onclick="recalculateProfits()" class="btn-secondary">
-                        <i class="fas fa-sync"></i>
-                        Actualiser
-                    </button>
-                    <button onclick="restoreInvestments()" class="btn-warning">
-                        <i class="fas fa-history"></i>
-                        Restaurer
-                    </button>
                 </div>
             </div>
         {% endif %}
@@ -1181,6 +1192,11 @@
                 <div>
                     <strong>Solde disponible:</strong> {{ "%.2f"|format(user.balance) }} USDT<br>
                     <span class="text-sm">Minimum de retrait: 10 USDT</span>
+                    {% if is_premium %}
+                    <br><span class="text-sm" style="color:#fbbf24;font-weight:600;">💎 Premium : frais $1 · retraits illimités · prioritaire</span>
+                    {% else %}
+                    <br><span class="text-sm" style="color:#94a3b8;">Frais standard: 5% (min $3) · Limite: 3 retraits/jour</span>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -1197,7 +1213,11 @@
 
         <div class="info-box info">
             <div class="text-sm">
-                <div class="flex justify-between"><span>Frais de réseau:</span><span>2 USDT</span></div>
+                {% if is_premium %}
+                <div class="flex justify-between"><span>Frais Premium ⚡:</span><span style="color:#fbbf24;font-weight:600;">1.00 USDT</span></div>
+                {% else %}
+                <div class="flex justify-between"><span>Frais (5%, min $3):</span><span id="feeAmount">0 USDT</span></div>
+                {% endif %}
                 <div class="flex justify-between mt-1 font-bold"><span>Montant reçu:</span><span id="netAmount">0 USDT</span></div>
             </div>
         </div>
@@ -1305,7 +1325,8 @@ async function submitWithdraw() {
         const data = await response.json();
 
         if (data.success) {
-            showNotification('✅ ' + data.message, 'success');
+            const msg = data.is_premium ? '⚡ ' + data.message : '✅ ' + data.message;
+            showNotification(msg, 'success');
             hideWithdrawModal();
             setTimeout(() => window.location.reload(), 1500);
         } else {
@@ -1317,12 +1338,187 @@ async function submitWithdraw() {
 }
 
 // Calculer le montant net pour les retraits
+const isPremium = {{ 'true' if is_premium else 'false' }};
 document.getElementById('withdrawAmount')?.addEventListener('input', function() {
     const amount = parseFloat(this.value) || 0;
-    const fee = 2;
+    const fee = isPremium ? 1.0 : Math.max(3.0, Math.round(amount * 0.05 * 100) / 100);
     const netAmount = Math.max(0, amount - fee);
+    const feeEl = document.getElementById('feeAmount');
+    if (feeEl) feeEl.textContent = fee.toFixed(2) + ' USDT';
     document.getElementById('netAmount').textContent = netAmount.toFixed(2) + ' USDT';
 });
+
+// Souscrire Premium
+async function subscribePremium() {
+    if (!confirm('Souscrire à Premium pour 13 USDT / mois ?\n\n✅ Retraits prioritaires\n✅ Frais fixe $1\n✅ +$1 tous les 2 jours\n✅ Retraits illimités')) return;
+    try {
+        const response = await fetch('/subscribe-premium', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        if (data.success) {
+            showNotification('💎 ' + data.message, 'success');
+            setTimeout(() => window.location.reload(), 1800);
+        } else {
+            showNotification('❌ ' + (data.error || 'Erreur lors de la souscription'), 'error');
+        }
+    } catch (error) {
+        showNotification('❌ Erreur de connexion', 'error');
+    }
+}
+
+// Renouveler Premium (même route)
+function renewPremium() { subscribePremium(); }
+
+// ─── Countdown timers & auto-claim ───────────────────────────────────────────
+const CYCLE_SECONDS = 86400; // 24h
+
+function initCountdowns() {
+    const cards = document.querySelectorAll('[data-investment-id][data-last-credited]');
+    cards.forEach(card => {
+        const id          = card.dataset.investmentId;
+        const lastCredited = card.dataset.lastCredited;    // ISO string
+        const endDateStr  = card.dataset.endDate;
+        const dailyProfit = parseFloat(card.dataset.dailyProfit) || 0;
+        const totalEarned = parseFloat(card.dataset.totalEarned) || 0;
+
+        if (!lastCredited || !id) return;
+
+        const lastTs  = new Date(lastCredited).getTime();
+        const nextTs  = lastTs + CYCLE_SECONDS * 1000;
+        const endTs   = endDateStr ? new Date(endDateStr).getTime() : Infinity;
+
+        tickCountdown(id, nextTs, endTs, dailyProfit, totalEarned);
+    });
+}
+
+function tickCountdown(id, nextTs, endTs, dailyProfit, baseTotalEarned) {
+    const countdownEl  = document.getElementById(`countdown-${id}`);
+    const claimBtn     = document.getElementById(`claim-btn-${id}`);
+    const progressEl   = document.getElementById(`progress-bar-${id}`);
+    const earnedEl     = document.getElementById(`earned-${id}`);
+
+    if (!countdownEl) return;
+
+    let localTotalEarned = baseTotalEarned;
+    let localNextTs = nextTs;
+
+    const interval = setInterval(() => {
+        const now     = Date.now();
+        const remaining = Math.max(0, localNextTs - now);
+        const elapsed   = CYCLE_SECONDS * 1000 - remaining;
+        const progress  = Math.min(100, (elapsed / (CYCLE_SECONDS * 1000)) * 100);
+
+        // Afficher décompte
+        const h = Math.floor(remaining / 3600000);
+        const m = Math.floor((remaining % 3600000) / 60000);
+        const s = Math.floor((remaining % 60000) / 1000);
+        countdownEl.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+
+        // Barre de progression
+        if (progressEl) progressEl.style.width = progress + '%';
+
+        // Aperçu gains accumulés en temps réel dans le cycle
+        if (earnedEl) {
+            const preview = localTotalEarned + (dailyProfit * elapsed / (CYCLE_SECONDS * 1000));
+            earnedEl.textContent = preview.toFixed(4) + ' USDT';
+        }
+
+        // Plan terminé
+        if (now > endTs) {
+            clearInterval(interval);
+            countdownEl.textContent = 'Terminé';
+            if (claimBtn) { claimBtn.disabled = true; claimBtn.textContent = '✅ Plan terminé'; }
+            return;
+        }
+
+        // Prêt à réclamer
+        if (remaining === 0) {
+            clearInterval(interval);
+            countdownEl.textContent = '00:00:00';
+            countdownEl.style.color = '#34d399';
+            if (claimBtn) {
+                claimBtn.disabled = false;
+                claimBtn.style.cssText = 'background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:10px;padding:0.5rem 1rem;font-size:0.82rem;font-weight:700;cursor:pointer;animation:pulse 1s infinite;';
+                claimBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Percevoir le gain';
+            }
+            // Auto-claim après 3 secondes
+            setTimeout(() => autoClaimProfit(id), 3000);
+            return;
+        }
+    }, 1000);
+
+    // Stocker le interval pour pouvoir le relancer après un claim
+    window[`inv_interval_${id}`] = { interval, setNextTs: (ts) => { localNextTs = ts; }, addEarned: (v) => { localTotalEarned += v; } };
+}
+
+async function claimProfit(id) {
+    const claimBtn = document.getElementById(`claim-btn-${id}`);
+    if (claimBtn) { claimBtn.disabled = true; claimBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Versement...'; }
+
+    try {
+        const res  = await fetch(`/api/claim-daily-profit/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification(`💰 ${data.message}`, 'success');
+
+            // Mettre à jour le solde affiché
+            const balEl = document.getElementById('main-balance');
+            if (balEl && data.new_balance !== undefined) {
+                balEl.textContent = data.new_balance.toFixed(2);
+                balEl.setAttribute('data-base-balance', data.new_balance);
+            }
+
+            // Redémarrer le timer
+            if (data.plan_ended) {
+                document.getElementById(`inv-card-${id}`)?.remove();
+            } else {
+                const newNextTs = Date.now() + CYCLE_SECONDS * 1000;
+                const handler = window[`inv_interval_${id}`];
+                if (handler) {
+                    clearInterval(handler.interval);
+                    handler.setNextTs(newNextTs);
+                    handler.addEarned(data.profit);
+                }
+                const countdownEl = document.getElementById(`countdown-${id}`);
+                if (countdownEl) countdownEl.style.color = '#a5b4fc';
+                if (claimBtn) {
+                    claimBtn.disabled = true;
+                    claimBtn.style.cssText = 'background:rgba(99,102,241,0.15);color:#6b7280;border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:0.5rem 1rem;font-size:0.82rem;font-weight:600;cursor:not-allowed;';
+                    claimBtn.innerHTML = '<i class="fas fa-lock mr-1"></i>En attente';
+                }
+                // Redémarrer le décompte
+                const card = document.getElementById(`inv-card-${id}`);
+                if (card) {
+                    const dailyProfit = parseFloat(card.dataset.dailyProfit) || 0;
+                    const endDateStr  = card.dataset.endDate;
+                    const endTs = endDateStr ? new Date(endDateStr).getTime() : Infinity;
+                    tickCountdown(id, newNextTs, endTs, dailyProfit, data.new_total_earned || 0);
+                }
+            }
+        } else {
+            showNotification('⚠️ ' + (data.error || 'Erreur'), 'error');
+            if (claimBtn) { claimBtn.disabled = false; claimBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Percevoir le gain'; }
+        }
+    } catch (e) {
+        showNotification('❌ Erreur de connexion', 'error');
+        if (claimBtn) { claimBtn.disabled = false; claimBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Percevoir le gain'; }
+    }
+}
+
+async function autoClaimProfit(id) {
+    const claimBtn = document.getElementById(`claim-btn-${id}`);
+    if (claimBtn && !claimBtn.disabled) {
+        showNotification('🔄 Versement automatique en cours...', 'info');
+        await claimProfit(id);
+    }
+}
+
+// Lancer tous les timers au chargement
+document.addEventListener('DOMContentLoaded', initCountdowns);
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Restaurer les investissements
 async function restoreInvestments() {

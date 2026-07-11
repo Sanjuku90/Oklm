@@ -52,6 +52,10 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 23636
+externalPort = 3001
+
 [agent]
 expertMode = true
 stack = "FLASK_VANILLA_JS"
