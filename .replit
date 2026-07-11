@@ -1,5 +1,5 @@
 entrypoint = "main.py"
-modules = ["web", "python-3.11", "nodejs-20"]
+modules = ["web", "nodejs-20", "python-3.11"]
 
 [nix]
 channel = "stable-25_05"
@@ -19,15 +19,6 @@ deploymentTarget = "autoscale"
 runButton = "Project"
 
 [[workflows.workflow]]
-name = "Run Investment Platform"
-author = 44876427
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python main.py"
-
-[[workflows.workflow]]
 name = "Project"
 mode = "parallel"
 author = "agent"
@@ -40,21 +31,17 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 -m gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 23636
-externalPort = 3001
 
 [agent]
 expertMode = true
