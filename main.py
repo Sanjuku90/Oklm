@@ -176,6 +176,20 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SESSION_SECRET') or os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 
 
+# ─── Prix dynamique de l'abonnement Premium ──────────────────────────────────
+PREMIUM_PROMO_PRICE = 13.0   # prix promotionnel jusqu'au 15/07
+PREMIUM_NORMAL_PRICE = 20.0  # prix normal après le 15/07
+PREMIUM_PROMO_END = datetime(2026, 7, 15, 23, 59, 59)
+
+def get_premium_price():
+    """Retourne le prix actuel de l'abonnement Premium selon la date."""
+    return PREMIUM_PROMO_PRICE if datetime.now() <= PREMIUM_PROMO_END else PREMIUM_NORMAL_PRICE
+
+def is_promo_active():
+    return datetime.now() <= PREMIUM_PROMO_END
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 @app.route('/healthz')
 def healthz():
     return 'ok', 200
@@ -1657,7 +1671,9 @@ def dashboard():
                          is_premium=is_premium,
                          premium_expires=premium_expires,
                          premium_days_left=premium_days_left,
-                         has_pending_premium=bool(pending_premium))
+                         has_pending_premium=bool(pending_premium),
+                         premium_price=get_premium_price(),
+                         premium_promo_active=is_promo_active())
 
 
 
@@ -2454,9 +2470,10 @@ def submit_withdrawal():
 @app.route('/subscribe-premium', methods=['POST'])
 @login_required
 def subscribe_premium():
-    """Soumettre une demande de dépôt Premium à 13$ — validation admin requise"""
+    """Soumettre une demande de dépôt Premium — validation admin requise"""
     data = request.get_json(force=True, silent=True) or {}
     transaction_hash = str(data.get('transaction_hash') or '').strip()
+    PREMIUM_PRICE = get_premium_price()
 
     conn = get_db_connection()
     try:
@@ -2482,7 +2499,7 @@ def subscribe_premium():
         add_notification(
             1,
             '💎 Nouvelle demande Premium',
-            f'Demande d\'abonnement Premium de {session.get("email", "Utilisateur")} — Hash: {(transaction_hash[:20] + "...") if len(transaction_hash) > 20 else transaction_hash or "non fourni"}',
+            f'Demande d\'abonnement Premium ({PREMIUM_PRICE:.0f} USDT) de {session.get("email", "Utilisateur")} — Hash: {(transaction_hash[:20] + "...") if len(transaction_hash) > 20 else transaction_hash or "non fourni"}',
             'info'
         )
 
@@ -3081,6 +3098,8 @@ def approve_premium_request(request_id):
             (req['user_id'],)
         ).fetchone()
 
+        price_paid = get_premium_price()
+
         if existing:
             try:
                 current_exp = datetime.fromisoformat(str(existing['expires_at']))
@@ -3088,15 +3107,15 @@ def approve_premium_request(request_id):
             except Exception:
                 new_exp = now + timedelta(days=PREMIUM_DURATION_DAYS)
             conn.execute(
-                'UPDATE premium_subscriptions SET expires_at = ?, is_active = 1, amount_paid = amount_paid + 13.0 WHERE user_id = ?',
-                (new_exp.isoformat(), req['user_id'])
+                'UPDATE premium_subscriptions SET expires_at = ?, is_active = 1, amount_paid = amount_paid + ? WHERE user_id = ?',
+                (new_exp.isoformat(), price_paid, req['user_id'])
             )
         else:
             new_exp = now + timedelta(days=PREMIUM_DURATION_DAYS)
             conn.execute('''
                 INSERT INTO premium_subscriptions (user_id, started_at, expires_at, amount_paid, is_active)
-                VALUES (?, ?, ?, 13.0, 1)
-            ''', (req['user_id'], now.isoformat(), new_exp.isoformat()))
+                VALUES (?, ?, ?, ?, 1)
+            ''', (req['user_id'], now.isoformat(), new_exp.isoformat(), price_paid))
 
         conn.execute(
             'UPDATE users SET is_premium = 1, premium_expires_at = ? WHERE id = ?',

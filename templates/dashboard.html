@@ -1050,7 +1050,7 @@
                 <div style="font-size:2rem;">⏳</div>
                 <div>
                     <div style="color:#fbbf24;font-weight:700;font-size:1rem;">Demande Premium en attente</div>
-                    <div style="color:#94a3b8;font-size:0.78rem;margin-top:0.2rem;">Votre dépôt de 13 USDT est en cours de vérification par notre équipe.</div>
+                    <div style="color:#94a3b8;font-size:0.78rem;margin-top:0.2rem;">Votre dépôt de {{ premium_price|int }} USDT est en cours de vérification par notre équipe.</div>
                 </div>
             </div>
             <span style="background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:8px;padding:0.4rem 0.9rem;font-size:0.8rem;font-weight:600;">Validation en cours…</span>
@@ -1060,7 +1060,10 @@
             <div style="display:flex;align-items:center;gap:0.75rem;">
                 <div style="font-size:2rem;">💎</div>
                 <div>
-                    <div style="color:#a5b4fc;font-weight:700;font-size:1rem;">Passer Premium — $13/mois</div>
+                    <div style="color:#a5b4fc;font-weight:700;font-size:1rem;">
+                        Passer Premium — ${{ premium_price|int }}/mois
+                        {% if premium_promo_active %}<span style="background:#6366f1;color:white;border-radius:6px;padding:1px 7px;font-size:0.65rem;font-weight:700;margin-left:6px;vertical-align:middle;">PROMO jusqu'au 15/07</span>{% endif %}
+                    </div>
                     <div style="color:#64748b;font-size:0.78rem;margin-top:0.2rem;">⚡ Retraits prioritaires · Frais $1 · +$1/2j · Illimité</div>
                 </div>
             </div>
@@ -1073,12 +1076,12 @@
     <div id="premiumModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;">
         <div style="background:#1e1b4b;border:1px solid rgba(99,102,241,0.4);border-radius:20px;padding:2rem;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
-                <h3 style="color:#a5b4fc;font-weight:700;font-size:1.1rem;margin:0;">💎 Abonnement Premium — 13 USDT/mois</h3>
+                <h3 style="color:#a5b4fc;font-weight:700;font-size:1.1rem;margin:0;">💎 Abonnement Premium — {{ premium_price|int }} USDT/mois</h3>
                 <button onclick="hidePremiumModal()" style="background:none;border:none;color:#64748b;font-size:1.3rem;cursor:pointer;">✕</button>
             </div>
 
             <div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:1rem;margin-bottom:1.25rem;">
-                <div style="color:#94a3b8;font-size:0.8rem;margin-bottom:0.4rem;font-weight:600;">ÉTAPE 1 — Envoyer exactement 13 USDT (TRC20) à :</div>
+                <div style="color:#94a3b8;font-size:0.8rem;margin-bottom:0.4rem;font-weight:600;">ÉTAPE 1 — Envoyer exactement {{ premium_price|int }} USDT (TRC20) à :</div>
                 <div onclick="copyPremiumAddress()" style="background:rgba(0,0,0,0.3);border-radius:8px;padding:0.6rem 0.8rem;font-family:monospace;font-size:0.78rem;color:#e2e8f0;word-break:break-all;cursor:pointer;border:1px solid rgba(99,102,241,0.2);">
                     TAB1oeEKDS5NATwFAaUrTioDU9djX7anyS
                 </div>
