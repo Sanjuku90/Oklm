@@ -21,7 +21,7 @@
     </div>
 
     <!-- Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div class="bg-white p-6 rounded-lg shadow-md">
             <div class="flex items-center">
                 <div class="p-3 rounded-full bg-yellow-100 text-yellow-600 mr-4">
@@ -29,7 +29,7 @@
                 </div>
                 <div>
                     <p class="text-2xl font-semibold text-gray-800">{{ transactions|length }}</p>
-                    <p class="text-gray-600">En attente</p>
+                    <p class="text-gray-600">Transactions en attente</p>
                 </div>
             </div>
         </div>
@@ -61,7 +61,80 @@
                 </div>
             </div>
         </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="flex items-center">
+                <div class="p-3 rounded-full bg-purple-100 text-purple-600 mr-4">
+                    <i class="fas fa-gem"></i>
+                </div>
+                <div>
+                    <p class="text-2xl font-semibold text-gray-800">{{ premium_requests|length }}</p>
+                    <p class="text-gray-600">Demandes Premium</p>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <!-- Demandes Premium en attente -->
+    {% if premium_requests %}
+    <div class="bg-white rounded-lg shadow-md mb-6">
+        <div class="p-6 border-b border-gray-200" style="background:linear-gradient(135deg,#f5f3ff,#ede9fe);border-radius:8px 8px 0 0;">
+            <h2 class="text-xl font-semibold" style="color:#6d28d9;">💎 Demandes d'abonnement Premium en attente</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Utilisateur</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hash de transaction</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for pr in premium_requests %}
+                    <tr id="premium-req-{{ pr.id }}">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="font-mono text-sm">#{{ pr.id }}</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-900">{{ pr.first_name }} {{ pr.last_name }}</div>
+                            <div class="text-sm text-gray-500">{{ pr.email }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+                                💎 13.00 USDT
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="text-xs text-gray-600 max-w-xs truncate font-mono" title="{{ pr.transaction_hash }}">
+                                {{ pr.transaction_hash or '—' }}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {{ pr.created_at[:16] }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div class="flex space-x-2">
+                                <button onclick="approvePremium({{ pr.id }})"
+                                        class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs">
+                                    <i class="fas fa-check mr-1"></i>Activer Premium
+                                </button>
+                                <button onclick="rejectPremium({{ pr.id }})"
+                                        class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs">
+                                    <i class="fas fa-times mr-1"></i>Rejeter
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Transactions List -->
     <div class="bg-white rounded-lg shadow-md">
@@ -176,6 +249,54 @@
 <script>
 let currentTransactionId = null;
 
+// ─── Demandes Premium ────────────────────────────────────────────────────────
+async function approvePremium(requestId) {
+    if (!confirm('Activer le Premium pour cet utilisateur ?')) return;
+    const row = document.getElementById(`premium-req-${requestId}`);
+    try {
+        const res = await fetch(`/admin/approve-premium/${requestId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data.success) {
+            showSuccessMessage('💎 ' + data.message);
+            row.innerHTML = `<td colspan="6" class="px-6 py-4 text-center text-purple-600 font-semibold"><i class="fas fa-check-circle mr-2"></i>Premium activé avec succès</td>`;
+            setTimeout(() => { row.style.opacity='0'; setTimeout(() => row.remove(), 500); }, 3000);
+        } else {
+            showErrorMessage('❌ ' + (data.error || 'Erreur'));
+        }
+    } catch(e) {
+        showErrorMessage('❌ Erreur de connexion');
+    }
+}
+
+let currentPremiumRequestId = null;
+function rejectPremium(requestId) {
+    currentPremiumRequestId = requestId;
+    document.getElementById('rejectModal').classList.remove('hidden');
+}
+async function confirmRejectPremium(reason) {
+    const row = document.getElementById(`premium-req-${currentPremiumRequestId}`);
+    try {
+        const res = await fetch(`/admin/reject-premium/${currentPremiumRequestId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: reason || 'Rejetée par l\'administrateur' })
+        });
+        const data = await res.json();
+        if (data.success) {
+            row.remove();
+            closeRejectModal();
+            showSuccessMessage('Demande Premium rejetée');
+        } else {
+            showErrorMessage('❌ ' + (data.error || 'Erreur'));
+        }
+    } catch(e) {
+        showErrorMessage('❌ Erreur de connexion');
+    }
+}
+
 async function approveTransaction(transactionId) {
     if (!confirm('Êtes-vous sûr de vouloir approuver cette transaction ?')) return;
     
@@ -286,11 +407,18 @@ function closeRejectModal() {
     document.getElementById('rejectModal').classList.add('hidden');
     document.getElementById('rejectReason').value = '';
     currentTransactionId = null;
+    currentPremiumRequestId = null;
 }
 
 async function confirmReject() {
     const reason = document.getElementById('rejectReason').value;
-    
+
+    // Si c'est un rejet de demande premium
+    if (currentPremiumRequestId !== null) {
+        await confirmRejectPremium(reason);
+        return;
+    }
+
     try {
         const response = await fetch(`/admin/reject-transaction/${currentTransactionId}`, {
             method: 'POST',

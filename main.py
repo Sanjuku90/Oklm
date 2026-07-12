@@ -614,6 +614,19 @@ def init_db():
         )
     ''')
 
+    # Premium Requests table (dépôts en attente de validation admin)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS premium_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            transaction_hash TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            processed_at TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
     # Add last_credited_at to user_investments if missing
     try:
         inv_cols = [c[1] for c in cursor.execute("PRAGMA table_info(user_investments)").fetchall()]
@@ -1612,6 +1625,12 @@ def dashboard():
         (session['user_id'],)
     ).fetchone()
 
+    # Vérifier si une demande premium est en attente
+    pending_premium = conn.execute(
+        "SELECT id FROM premium_requests WHERE user_id = ? AND status = 'pending'",
+        (session['user_id'],)
+    ).fetchone()
+
     conn.close()
 
     print(f"DEBUG: User {session['user_id']} has {len(investments)} active investments")
@@ -1637,7 +1656,8 @@ def dashboard():
                          notifications=notifications,
                          is_premium=is_premium,
                          premium_expires=premium_expires,
-                         premium_days_left=premium_days_left)
+                         premium_days_left=premium_days_left,
+                         has_pending_premium=bool(pending_premium))
 
 
 
@@ -2434,69 +2454,50 @@ def submit_withdrawal():
 @app.route('/subscribe-premium', methods=['POST'])
 @login_required
 def subscribe_premium():
-    """Souscrire à l'abonnement Premium à 13$"""
-    from datetime import datetime, timedelta
-    PREMIUM_PRICE = 13.0
-    PREMIUM_DURATION_DAYS = 30
+    """Soumettre une demande de dépôt Premium à 13$ — validation admin requise"""
+    data = request.get_json(force=True, silent=True) or {}
+    transaction_hash = str(data.get('transaction_hash') or '').strip()
 
     conn = get_db_connection()
     try:
-        user = conn.execute(
-            'SELECT balance, is_premium, premium_expires_at FROM users WHERE id = ?',
+        # Vérifier qu'il n'y a pas déjà une demande en attente
+        existing_request = conn.execute(
+            "SELECT id FROM premium_requests WHERE user_id = ? AND status = 'pending'",
             (session['user_id'],)
         ).fetchone()
+        if existing_request:
+            conn.close()
+            return jsonify({'error': 'Vous avez déjà une demande en attente. Attendez la validation de l\'administrateur.'}), 400
 
-        now = datetime.now()
-
-        # Si déjà premium et pas expiré, prolonger
-        existing = conn.execute(
-            'SELECT expires_at FROM premium_subscriptions WHERE user_id = ? AND is_active = 1',
-            (session['user_id'],)
-        ).fetchone()
-
-        if existing:
-            try:
-                current_exp = datetime.fromisoformat(str(existing['expires_at']))
-                new_exp = max(current_exp, now) + timedelta(days=PREMIUM_DURATION_DAYS)
-            except Exception:
-                new_exp = now + timedelta(days=PREMIUM_DURATION_DAYS)
-            conn.execute(
-                'UPDATE premium_subscriptions SET expires_at = ?, is_active = 1, amount_paid = amount_paid + ? WHERE user_id = ?',
-                (new_exp.isoformat(), PREMIUM_PRICE, session['user_id'])
-            )
-        else:
-            new_exp = now + timedelta(days=PREMIUM_DURATION_DAYS)
-            conn.execute('''
-                INSERT INTO premium_subscriptions (user_id, started_at, expires_at, amount_paid, is_active)
-                VALUES (?, ?, ?, ?, 1)
-            ''', (session['user_id'], now.isoformat(), new_exp.isoformat(), PREMIUM_PRICE))
-
-        # Mettre à jour le statut premium de l'utilisateur (sans déduire du solde)
-        conn.execute(
-            'UPDATE users SET is_premium = 1, premium_expires_at = ? WHERE id = ?',
-            (new_exp.isoformat(), session['user_id'])
-        )
-
-        # Enregistrer la transaction
+        # Créer la demande en attente
         conn.execute('''
-            INSERT INTO transactions (user_id, type, amount, status, transaction_hash, priority)
-            VALUES (?, 'premium_subscription', ?, 'completed', ?, 'normal')
-        ''', (session['user_id'], PREMIUM_PRICE, generate_transaction_hash()))
+            INSERT INTO premium_requests (user_id, transaction_hash, status, created_at)
+            VALUES (?, ?, 'pending', CURRENT_TIMESTAMP)
+        ''', (session['user_id'], transaction_hash or 'EN_ATTENTE'))
 
         conn.commit()
         conn.close()
 
+        # Notifier l'admin
+        add_notification(
+            1,
+            '💎 Nouvelle demande Premium',
+            f'Demande d\'abonnement Premium de {session.get("email", "Utilisateur")} — Hash: {(transaction_hash[:20] + "...") if len(transaction_hash) > 20 else transaction_hash or "non fourni"}',
+            'info'
+        )
+
+        # Notifier l'utilisateur
         add_notification(
             session['user_id'],
-            '💎 Bienvenue dans Premium !',
-            f'Votre abonnement Premium est actif jusqu\'au {new_exp.strftime("%d/%m/%Y")}. Profitez de vos avantages exclusifs !',
-            'success'
+            '⏳ Demande Premium en cours',
+            'Votre demande d\'abonnement Premium est en attente de validation. Nous vous notifierons dès qu\'elle sera traitée.',
+            'info'
         )
 
         return jsonify({
             'success': True,
-            'message': f'Abonnement Premium activé jusqu\'au {new_exp.strftime("%d/%m/%Y")} !',
-            'expires_at': new_exp.isoformat()
+            'pending': True,
+            'message': 'Demande soumise ! En attente de validation par l\'administrateur.'
         })
 
     except Exception as e:
@@ -2507,7 +2508,7 @@ def subscribe_premium():
                 conn.close()
             except Exception:
                 pass
-        return jsonify({'error': 'Erreur lors de la souscription. Réessayez.'}), 500
+        return jsonify({'error': 'Erreur lors de la soumission. Réessayez.'}), 500
 
 # Support routes
 @app.route('/support')
@@ -3026,10 +3027,9 @@ def restore_user_investments(user_id, investments_data=None):
 @app.route('/admin/transactions')
 @admin_required
 def admin_transactions():
-    """Gestion des transactions (dépôts/retraits)"""
+    """Gestion des transactions (dépôts/retraits) + demandes Premium"""
     conn = get_db_connection()
 
-    # Récupérer toutes les transactions en attente
     pending_transactions = conn.execute('''
         SELECT t.*, u.first_name, u.last_name, u.email
         FROM transactions t
@@ -3038,9 +3038,140 @@ def admin_transactions():
         ORDER BY t.created_at DESC
     ''').fetchall()
 
+    pending_premium_requests = conn.execute('''
+        SELECT pr.*, u.first_name, u.last_name, u.email
+        FROM premium_requests pr
+        JOIN users u ON pr.user_id = u.id
+        WHERE pr.status = 'pending'
+        ORDER BY pr.created_at DESC
+    ''').fetchall()
+
     conn.close()
 
-    return render_template('admin_transactions.html', transactions=pending_transactions)
+    return render_template('admin_transactions.html',
+                           transactions=pending_transactions,
+                           premium_requests=pending_premium_requests)
+
+
+@app.route('/admin/approve-premium/<int:request_id>', methods=['POST'])
+@admin_required
+def approve_premium_request(request_id):
+    """Approuver une demande d'abonnement Premium"""
+    from datetime import datetime, timedelta
+    PREMIUM_DURATION_DAYS = 30
+
+    conn = get_db_connection()
+    try:
+        req = conn.execute('''
+            SELECT pr.*, u.email, u.first_name
+            FROM premium_requests pr
+            JOIN users u ON pr.user_id = u.id
+            WHERE pr.id = ? AND pr.status = 'pending'
+        ''', (request_id,)).fetchone()
+
+        if not req:
+            conn.close()
+            return jsonify({'error': 'Demande non trouvée ou déjà traitée'}), 404
+
+        now = datetime.now()
+
+        # Si déjà premium, prolonger ; sinon créer
+        existing = conn.execute(
+            'SELECT expires_at FROM premium_subscriptions WHERE user_id = ? AND is_active = 1',
+            (req['user_id'],)
+        ).fetchone()
+
+        if existing:
+            try:
+                current_exp = datetime.fromisoformat(str(existing['expires_at']))
+                new_exp = max(current_exp, now) + timedelta(days=PREMIUM_DURATION_DAYS)
+            except Exception:
+                new_exp = now + timedelta(days=PREMIUM_DURATION_DAYS)
+            conn.execute(
+                'UPDATE premium_subscriptions SET expires_at = ?, is_active = 1, amount_paid = amount_paid + 13.0 WHERE user_id = ?',
+                (new_exp.isoformat(), req['user_id'])
+            )
+        else:
+            new_exp = now + timedelta(days=PREMIUM_DURATION_DAYS)
+            conn.execute('''
+                INSERT INTO premium_subscriptions (user_id, started_at, expires_at, amount_paid, is_active)
+                VALUES (?, ?, ?, 13.0, 1)
+            ''', (req['user_id'], now.isoformat(), new_exp.isoformat()))
+
+        conn.execute(
+            'UPDATE users SET is_premium = 1, premium_expires_at = ? WHERE id = ?',
+            (new_exp.isoformat(), req['user_id'])
+        )
+
+        conn.execute(
+            "UPDATE premium_requests SET status = 'approved', processed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (request_id,)
+        )
+
+        conn.commit()
+        conn.close()
+
+        add_notification(
+            req['user_id'],
+            '💎 Premium activé !',
+            f'Votre abonnement Premium a été activé jusqu\'au {new_exp.strftime("%d/%m/%Y")}. Profitez de vos avantages exclusifs !',
+            'success'
+        )
+
+        return jsonify({'success': True, 'message': f'Premium activé pour {req["email"]} jusqu\'au {new_exp.strftime("%d/%m/%Y")}'})
+
+    except Exception as e:
+        if 'conn' in locals():
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({'error': f'Erreur: {str(e)}'}), 500
+
+
+@app.route('/admin/reject-premium/<int:request_id>', methods=['POST'])
+@admin_required
+def reject_premium_request(request_id):
+    """Rejeter une demande d'abonnement Premium"""
+    data = request.get_json() or {}
+    reason = data.get('reason', 'Demande rejetée par l\'administrateur')
+
+    conn = get_db_connection()
+    try:
+        req = conn.execute(
+            'SELECT * FROM premium_requests WHERE id = ? AND status = \'pending\'',
+            (request_id,)
+        ).fetchone()
+
+        if not req:
+            conn.close()
+            return jsonify({'error': 'Demande non trouvée ou déjà traitée'}), 404
+
+        conn.execute(
+            "UPDATE premium_requests SET status = 'rejected', processed_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (request_id,)
+        )
+        conn.commit()
+        conn.close()
+
+        add_notification(
+            req['user_id'],
+            '❌ Demande Premium rejetée',
+            f'Votre demande d\'abonnement Premium a été rejetée. Raison : {reason}',
+            'error'
+        )
+
+        return jsonify({'success': True, 'message': 'Demande rejetée'})
+
+    except Exception as e:
+        if 'conn' in locals():
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({'error': f'Erreur: {str(e)}'}), 500
 
 @app.route('/restore-from-backup', methods=['POST'])
 @login_required

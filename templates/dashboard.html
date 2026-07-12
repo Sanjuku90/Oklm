@@ -1042,7 +1042,18 @@
                     </div>
                 </div>
             </div>
-            <button onclick="renewPremium()" style="background:rgba(234,179,8,0.2);color:#fbbf24;border:1px solid rgba(234,179,8,0.5);border-radius:8px;padding:0.4rem 0.9rem;font-size:0.8rem;font-weight:600;cursor:pointer;">Renouveler</button>
+            <button onclick="showPremiumModal()" style="background:rgba(234,179,8,0.2);color:#fbbf24;border:1px solid rgba(234,179,8,0.5);border-radius:8px;padding:0.4rem 0.9rem;font-size:0.8rem;font-weight:600;cursor:pointer;">Renouveler</button>
+        </div>
+        {% elif has_pending_premium %}
+        <div style="background:linear-gradient(135deg,#1a1f2e,#1a2a1a);border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;box-shadow:0 4px 20px rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <div style="font-size:2rem;">⏳</div>
+                <div>
+                    <div style="color:#fbbf24;font-weight:700;font-size:1rem;">Demande Premium en attente</div>
+                    <div style="color:#94a3b8;font-size:0.78rem;margin-top:0.2rem;">Votre dépôt de 13 USDT est en cours de vérification par notre équipe.</div>
+                </div>
+            </div>
+            <span style="background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:8px;padding:0.4rem 0.9rem;font-size:0.8rem;font-weight:600;">Validation en cours…</span>
         </div>
         {% else %}
         <div style="background:linear-gradient(135deg,#1e1b4b,#1a1a2e);border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;box-shadow:0 4px 20px rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);">
@@ -1053,9 +1064,48 @@
                     <div style="color:#64748b;font-size:0.78rem;margin-top:0.2rem;">⚡ Retraits prioritaires · Frais $1 · +$1/2j · Illimité</div>
                 </div>
             </div>
-            <button onclick="subscribePremium()" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:10px;padding:0.55rem 1.1rem;font-size:0.85rem;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 10px rgba(99,102,241,0.4);">S'abonner</button>
+            <button onclick="showPremiumModal()" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:10px;padding:0.55rem 1.1rem;font-size:0.85rem;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 10px rgba(99,102,241,0.4);">S'abonner</button>
         </div>
         {% endif %}
+    </div>
+
+    <!-- Modal Dépôt Premium -->
+    <div id="premiumModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:#1e1b4b;border:1px solid rgba(99,102,241,0.4);border-radius:20px;padding:2rem;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
+                <h3 style="color:#a5b4fc;font-weight:700;font-size:1.1rem;margin:0;">💎 Abonnement Premium — 13 USDT/mois</h3>
+                <button onclick="hidePremiumModal()" style="background:none;border:none;color:#64748b;font-size:1.3rem;cursor:pointer;">✕</button>
+            </div>
+
+            <div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:1rem;margin-bottom:1.25rem;">
+                <div style="color:#94a3b8;font-size:0.8rem;margin-bottom:0.4rem;font-weight:600;">ÉTAPE 1 — Envoyer exactement 13 USDT (TRC20) à :</div>
+                <div onclick="copyPremiumAddress()" style="background:rgba(0,0,0,0.3);border-radius:8px;padding:0.6rem 0.8rem;font-family:monospace;font-size:0.78rem;color:#e2e8f0;word-break:break-all;cursor:pointer;border:1px solid rgba(99,102,241,0.2);">
+                    TAB1oeEKDS5NATwFAaUrTioDU9djX7anyS
+                </div>
+                <button onclick="copyPremiumAddress()" style="margin-top:0.5rem;background:rgba(99,102,241,0.2);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);border-radius:6px;padding:0.3rem 0.8rem;font-size:0.75rem;font-weight:600;cursor:pointer;">
+                    <i class="fas fa-copy" style="margin-right:4px;"></i>Copier l'adresse
+                </button>
+            </div>
+
+            <div style="margin-bottom:1.25rem;">
+                <label style="color:#94a3b8;font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.4rem;">ÉTAPE 2 — Coller le hash de votre transaction :</label>
+                <input type="text" id="premiumTxHash" placeholder="Hash de transaction TRC20…"
+                    style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:0.6rem 0.8rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;outline:none;">
+                <div style="color:#64748b;font-size:0.72rem;margin-top:0.3rem;">Le hash est optionnel mais accélère la vérification.</div>
+            </div>
+
+            <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:0.7rem;margin-bottom:1.25rem;">
+                <div style="color:#fbbf24;font-size:0.78rem;font-weight:600;">✅ Avantages Premium :</div>
+                <div style="color:#94a3b8;font-size:0.75rem;margin-top:0.3rem;line-height:1.6;">
+                    ⚡ Retraits prioritaires &nbsp;·&nbsp; 💸 Frais fixe 1$ &nbsp;·&nbsp; +1$/2 jours &nbsp;·&nbsp; ♾ Illimité
+                </div>
+            </div>
+
+            <button onclick="submitPremiumRequest()" id="premiumSubmitBtn"
+                style="width:100%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:10px;padding:0.75rem;font-size:0.9rem;font-weight:700;cursor:pointer;box-shadow:0 4px 15px rgba(99,102,241,0.4);">
+                Soumettre ma demande
+            </button>
+        </div>
     </div>
 
     <!-- Investissements actifs -->
@@ -1348,28 +1398,52 @@ document.getElementById('withdrawAmount')?.addEventListener('input', function() 
     document.getElementById('netAmount').textContent = netAmount.toFixed(2) + ' USDT';
 });
 
-// Souscrire Premium
-async function subscribePremium() {
-    if (!confirm('Souscrire à Premium pour 13 USDT / mois ?\n\n✅ Retraits prioritaires\n✅ Frais fixe $1\n✅ +$1 tous les 2 jours\n✅ Retraits illimités')) return;
+// Modal Premium
+function showPremiumModal() {
+    const modal = document.getElementById('premiumModal');
+    modal.style.display = 'flex';
+}
+function hidePremiumModal() {
+    const modal = document.getElementById('premiumModal');
+    modal.style.display = 'none';
+    document.getElementById('premiumTxHash').value = '';
+}
+function copyPremiumAddress() {
+    navigator.clipboard.writeText('TAB1oeEKDS5NATwFAaUrTioDU9djX7anyS').then(() => {
+        showNotification('✅ Adresse copiée !', 'success');
+    });
+}
+async function submitPremiumRequest() {
+    const hash = document.getElementById('premiumTxHash').value.trim();
+    const btn = document.getElementById('premiumSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Envoi en cours…';
     try {
         const response = await fetch('/subscribe-premium', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ transaction_hash: hash })
         });
         const data = await response.json();
         if (data.success) {
-            showNotification('💎 ' + data.message, 'success');
-            setTimeout(() => window.location.reload(), 1800);
+            showNotification('⏳ ' + data.message, 'success');
+            hidePremiumModal();
+            setTimeout(() => window.location.reload(), 2000);
         } else {
-            showNotification('❌ ' + (data.error || 'Erreur lors de la souscription'), 'error');
+            showNotification('❌ ' + (data.error || 'Erreur'), 'error');
+            btn.disabled = false;
+            btn.textContent = 'Soumettre ma demande';
         }
     } catch (error) {
         showNotification('❌ Erreur de connexion', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Soumettre ma demande';
     }
 }
-
-// Renouveler Premium (même route)
-function renewPremium() { subscribePremium(); }
+// Fermer le modal en cliquant à l'extérieur
+document.getElementById('premiumModal').addEventListener('click', function(e) {
+    if (e.target === this) hidePremiumModal();
+});
 
 // ─── Countdown timers & auto-claim ───────────────────────────────────────────
 // Versement quotidien à 12h00 pour tout le monde
