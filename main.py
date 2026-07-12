@@ -2375,7 +2375,7 @@ def submit_deposit():
 @app.route('/withdraw', methods=['POST'])
 @login_required
 def submit_withdrawal():
-    """Soumettre une demande de retrait"""
+    """Soumettre une demande de retrait — abonnement Premium obligatoire"""
     from datetime import datetime, date
     data = request.get_json()
     amount = float(data.get('amount', 0))
@@ -2405,16 +2405,21 @@ def submit_withdrawal():
         except Exception:
             is_premium = False
 
+    # ── PREMIUM OBLIGATOIRE pour tout retrait ────────────────────────────────
+    if not is_premium:
+        conn.close()
+        price = get_premium_price()
+        return jsonify({
+            'error': f'Un abonnement Premium est requis pour effectuer un retrait. '
+                     f'Souscrivez pour {price:.0f} USDT/mois et accédez aux retraits.',
+            'requires_premium': True
+        }), 403
+    # ─────────────────────────────────────────────────────────────────────────
+
     # Réinitialiser compteur si nouveau jour
     today_str = date.today().isoformat()
     last_wd_date = str(user['last_withdrawal_date']) if user['last_withdrawal_date'] else ''
     current_count = user['daily_withdrawal_count'] if last_wd_date == today_str else 0
-
-    # Vérifier limite journalière pour non-premium (max 3/jour)
-    DAILY_LIMIT = 3
-    if not is_premium and current_count >= DAILY_LIMIT:
-        conn.close()
-        return jsonify({'error': f'Limite journalière de {DAILY_LIMIT} retraits atteinte. Passez Premium pour des retraits illimités.'}), 400
 
     # Calculer les frais
     if is_premium:

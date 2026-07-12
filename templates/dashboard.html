@@ -1245,14 +1245,21 @@
                 <div>
                     <strong>Solde disponible:</strong> {{ "%.2f"|format(user.balance) }} USDT<br>
                     <span class="text-sm">Minimum de retrait: 10 USDT</span>
-                    {% if is_premium %}
                     <br><span class="text-sm" style="color:#fbbf24;font-weight:600;">💎 Premium : frais $1 · retraits illimités · prioritaire</span>
-                    {% else %}
-                    <br><span class="text-sm" style="color:#94a3b8;">Frais standard: 5% (min $3) · Limite: 3 retraits/jour</span>
-                    {% endif %}
                 </div>
             </div>
         </div>
+
+        {% if not is_premium %}
+        <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:0.9rem 1rem;margin-bottom:1rem;text-align:center;">
+            <div style="color:#f87171;font-weight:700;font-size:0.9rem;margin-bottom:0.3rem;">🔒 Abonnement Premium requis</div>
+            <div style="color:#94a3b8;font-size:0.78rem;">Les retraits sont réservés aux membres Premium.</div>
+            <button onclick="hideWithdrawModal(); showPremiumModal();"
+                style="margin-top:0.6rem;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:8px;padding:0.4rem 1rem;font-size:0.8rem;font-weight:700;cursor:pointer;">
+                S'abonner — {{ premium_price|int }}$ /mois
+            </button>
+        </div>
+        {% endif %}
 
         <div class="form-group">
             <label class="form-label">📍 Adresse de destination (USDT TRC20)</label>
@@ -1293,6 +1300,12 @@ function hideDepositModal() {
 }
 
 function showWithdrawModal() {
+    {% if not is_premium %}
+    // Premium obligatoire — rediriger vers le modal d'abonnement
+    showNotification('💎 Un abonnement Premium est requis pour retirer. Abonnez-vous ci-dessous.', 'error');
+    setTimeout(() => showPremiumModal(), 800);
+    return;
+    {% endif %}
     document.getElementById('withdrawModal').classList.remove('hidden');
 }
 
@@ -1378,10 +1391,13 @@ async function submitWithdraw() {
         const data = await response.json();
 
         if (data.success) {
-            const msg = data.is_premium ? '⚡ ' + data.message : '✅ ' + data.message;
-            showNotification(msg, 'success');
+            showNotification('⚡ ' + data.message, 'success');
             hideWithdrawModal();
             setTimeout(() => window.location.reload(), 1500);
+        } else if (data.requires_premium) {
+            hideWithdrawModal();
+            showNotification('💎 ' + data.error, 'error');
+            setTimeout(() => showPremiumModal(), 1000);
         } else {
             showNotification('❌ ' + (data.error || 'Erreur lors du retrait'), 'error');
         }
